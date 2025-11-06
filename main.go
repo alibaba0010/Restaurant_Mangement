@@ -7,8 +7,8 @@ import (
 	"os"
 
 	"github.com/joho/godotenv"
-	// "github.com/jackc/pgx/v5"
 	"github.com/alibaba0010/postgres-api/logger"
+	"github.com/alibaba0010/postgres-api/api/database"
 	"github.com/gorilla/mux"
 	"go.uber.org/zap"
 )
@@ -17,7 +17,8 @@ import (
 func main(){
 	err := godotenv.Load()
 	if err != nil {
-		log.Println("No .env file found, using system environment variables...")
+		// log.Println("No .env file found, using system environment variables...")
+		logger.Log.Warn("No .env file found", zap.Error(err))
 	}
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -27,12 +28,16 @@ func main(){
 	logger.InitLogger()
 	// defer sync to flush logs on program exit
 	defer logger.Sync()
+
+	database.ConnectDB()
+	defer database.CloseDB()
+
 	route := mux.NewRouter()
 	route.Use(logger.Logger)
 	route.HandleFunc("/getUser", getUserHandler).Methods("GET")
 	route.HandleFunc("/getBook", GetBookHandler).Methods("GET")
 	route.HandleFunc("/", httpHandler).Methods("GET")
-	logger.Log.Info("\n🚀 Server starting", zap.String("address", ":"+port))
+	logger.Log.Info("🚀 Server starting", zap.String("address", ":"+port))
 	if  err:= http.ListenAndServe(":"+port, route); err != nil {
 		log.Fatal(err)
 	}

@@ -3,13 +3,13 @@ package logger
 import (
 	"net/http"
 	"time"
-	"sync"
+	// "sync"
 	"go.uber.org/zap"
 )
 type loggingResponseWriter struct {
     http.ResponseWriter
     status    int  
-    once      sync.Once
+    // once      sync.Once
 }
 func (lrw *loggingResponseWriter) WriteHeader(status int) {
     lrw.status = status
