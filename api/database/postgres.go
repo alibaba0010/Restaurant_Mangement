@@ -5,11 +5,10 @@ import (
 	"fmt"
 	"os"
 	"time"
-	"github.com/alibaba0010/postgres-api/logger"
-	"go.uber.org/zap"
-	
 
+	"github.com/alibaba0010/postgres-api/logger"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"go.uber.org/zap"
 )
 var Pool *pgxpool.Pool
 func ConnectDB(){
@@ -27,6 +26,9 @@ func ConnectDB(){
 	if err != nil {
 		logger.Log.Fatal("Unable to connect to database", zap.Error(err))
 	}
+	// db := bun.NewDB(Pool, pgdialect.New())
+
+	
 		// Test connection
 	err = Pool.Ping(context)
 	if err != nil {

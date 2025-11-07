@@ -1,0 +1,34 @@
+package logger
+
+import (
+	"go.uber.org/zap"
+)
+
+var Log *zap.Logger
+
+func InitLogger() {
+	// Use a production-like config but disable caller and stacktrace so file/stack
+	// details are not printed to the console.
+	cfg := zap.NewProductionConfig()
+	cfg.DisableCaller = true
+	cfg.DisableStacktrace = true
+	// keep JSON output for structured logs; change level to info by default
+	cfg.Level = zap.NewAtomicLevelAt(zap.InfoLevel)
+
+	var err error
+	Log, err = cfg.Build()
+	if err != nil {
+		panic(err)
+	}
+	// 	var err error
+	// Log, err = zap.NewDevelopment()
+	// if err != nil {
+	// 	panic(err)
+	// }	
+}
+
+func Sync(){
+	if Log != nil {
+		_ = Log.Sync()
+	}
+}

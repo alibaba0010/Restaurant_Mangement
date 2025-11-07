@@ -29,15 +29,15 @@ func getUserHandler(writer http.ResponseWriter, request *http.Request){
 	}
 }
 func GetBookHandler(writer http.ResponseWriter, request *http.Request){
-
+	
 	book:= Book{
 		Name: "The Go Programming Language",	
 		Author: "Ngugi Wa Thiongo",}
-	writer.Header().Set("Content-Type", "application/json")
-	err := json.NewEncoder(writer).Encode(book)
-	if err != nil {
-		http.Error(writer, err.Error(), http.StatusInternalServerError)
-		return
+		writer.Header().Set("Content-Type", "application/json")
+		err := json.NewEncoder(writer).Encode(book)
+		if err != nil {
+			http.Error(writer, err.Error(), http.StatusInternalServerError)
+			return
 		}
 }
 
