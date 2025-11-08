@@ -3,22 +3,23 @@ package docs
 
 import "github.com/swaggo/swag"
 
+
 const docTemplate = `{
-	"swagger": "2.0",
-	"info": {
-		"title": "Restaurant Management API",
-		"description": "A Restaurant Management API built using Go",
-		"version": "1.0.0",
-		"contact": {
-			"email": "zakariyahali@gmail.com"
-		},
-		"license": {
-			"name": "Apache 2.0",
-			"url": "http://www.apache.org/licenses/LICENSE-2.0.html"
-		}
-	},
-	"host": "localhost:3000",
-	"basePath": "/",
+  "swagger": "2.0",
+  "info": {
+    "title": "Restaurant Management API",
+    "description": "A Restaurant Management API built using Go",
+    "version": "1.0.0",
+    "contact": {
+      "email": "your.email@example.com"
+    },
+    "license": {
+      "name": "Apache 2.0",
+      "url": "http://www.apache.org/licenses/LICENSE-2.0.html"
+    }
+  },
+  "host": "localhost:3000",
+  "basePath": "/api/v1",
 	"schemes": [
 		"http"
 	],
@@ -36,8 +37,40 @@ const docTemplate = `{
 			"description": "Enter the token with the Bearer prefix, e.g. 'Bearer abcde12345'"
 		}
 	},
-	"paths": {
-		"/users": {
+		"paths": {
+			"/healthcheck": {
+				"get": {
+					"tags": [
+						"system"
+					],
+					"summary": "API Health Check",
+					"description": "Returns the health status of the API",
+					"operationId": "healthCheck",
+					"responses": {
+						"200": {
+							"description": "API is healthy",
+							"schema": {
+								"type": "object",
+								"properties": {
+									"title": {
+										"type": "string",
+										"example": "Success"
+									},
+									"message": {
+										"type": "string",
+										"example": "API is healthy and running"
+									}
+								},
+								"required": [
+									"title",
+									"message"
+								]
+							}
+						}
+					}
+				}
+			},
+			"/users": {
 			"get": {
 				"tags": [
 					"Users"
@@ -53,12 +86,14 @@ const docTemplate = `{
 				"responses": {
 					"200": {
 						"description": "Successful operation",
-						"schema": {
-							"type": "array",
-							"items": {
-								"$ref": "#/definitions/User"
-							}
-						}
+										"schema": {
+											"type": "object",
+											"properties": {
+												"title": { "type": "string", "example": "Success" },
+												"data": { "type": "array", "items": { "$ref": "#/definitions/User" } }
+											},
+											"required": ["title","data"]
+										}
 					},
 					"401": {
 						"description": "Unauthorized",
