@@ -8,17 +8,20 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/alibaba0010/postgres-api/internal/logger"
+	"github.com/alibaba0010/postgres-api/internal/config"
 )
 
 var RedisClient *redis.Client
 
 func ConnectRedis() *redis.Client {
+	cfg := config.LoadConfig()
+
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
     defer cancel()
 
 	RedisClient = redis.NewClient(&redis.Options{
-		Addr:     "localhost:6379",
-		Password: "", // no password set
+		Addr:     cfg.REDIS_HOST + ":" + cfg.REDIS_PORT,
+		Password: cfg.REDIS_PASSWORD, // no password set
 		DB:       0,  // use default DB
 	})
 

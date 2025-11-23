@@ -26,8 +26,18 @@ func RegisterUser(ctx context.Context, input dto.SignupInput) (*models.User, *er
 		for _, e := range err.(validator.ValidationErrors) {
 			var msg string
 			switch e.Tag() {
+			case "required":
+				msg = e.Field() + " is required"
+			case "min":
+				msg = e.Field() + " must be at least " + e.Param() + " characters"
+			case "max":
+				msg = e.Field() + " must be at most " + e.Param() + " characters"
+			case "email":
+				msg = e.Field() + " must be a valid email address"
 			case "password_special":
 				msg = e.Field() + " must contain at least one uppercase letter, one lowercase letter, one digit, and one special character"
+			case "eqfield":
+				msg = e.Field() + " must match " + e.Param()
 			default:
 				msg = e.Field() + " failed validation: " + e.Tag()
 			}
@@ -46,7 +56,9 @@ func RegisterUser(ctx context.Context, input dto.SignupInput) (*models.User, *er
 	if exists {
 		return nil, errors.DuplicateError("email")
 	}
-
+// --------------------------------- -----------------------------
+// generate token for email verification
+// send email with the token
 	// Hash password
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(input.Password), bcrypt.DefaultCost)
 	if err != nil {

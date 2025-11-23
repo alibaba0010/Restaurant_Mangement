@@ -1,10 +1,11 @@
 package config
+
 import (
 	"os"
-	"github.com/joho/godotenv"
-	"github.com/alibaba0010/postgres-api/internal/logger"
-	"go.uber.org/zap"
 
+	"github.com/alibaba0010/postgres-api/internal/logger"
+	"github.com/joho/godotenv"
+	"go.uber.org/zap"
 )
 
 
@@ -15,6 +16,13 @@ type Config struct {
 	DB_USERNAME string
 	DB_PASSWORD string
 	DB_NAME string
+	REDIS_HOST string
+	REDIS_PORT string
+	REDIS_PASSWORD string
+	EMAIL_PORT string
+	EMAIL_HOST string
+	EMAIL_USER string
+	EMAIL_PASSWORD string
 }
 
 func LoadConfig() Config {
@@ -30,6 +38,13 @@ func LoadConfig() Config {
 		DB_USERNAME: getEnv("DB_USERNAME", "postgres"),
 		DB_PASSWORD: getEnv("DB_PASSWORD", "password"),
 		DB_NAME:     getEnv("DB_NAME", "postgres"),
+		REDIS_HOST:     getEnv("REDIS_HOST", "localhost"),
+		REDIS_PORT:     getEnv("REDIS_PORT", "6379"),
+		REDIS_PASSWORD: getEnv("REDIS_PASSWORD", ""),
+		EMAIL_PORT:     getEnv("EMAIL_PORT", "587"),
+		EMAIL_HOST:     getEnv("EMAIL_HOST", "smtp.gmail.com"),
+		EMAIL_USER:     getEnv("EMAIL_USER", ""),
+		EMAIL_PASSWORD: getEnv("EMAIL_PASSWORD", ""),
 	}
 }
 

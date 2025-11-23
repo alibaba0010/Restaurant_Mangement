@@ -51,3 +51,6 @@ func SignupHandler(writer http.ResponseWriter, request *http.Request) {
 	writer.WriteHeader(http.StatusCreated)
 	_ = json.NewEncoder(writer).Encode(resp)
 }
+func VerifyEmailHandler(writer http.ResponseWriter, request *http.Request) {
+	// Implementation for email verification goes here
+}

@@ -9,7 +9,7 @@ import (
 type SignupInput struct {
 	Name            string `json:"name" validate:"required,min=3,max=50"`
 	Email           string `json:"email" validate:"required,email"`
-	Password        string `json:"password" validate:"required,min=6,password_special"`
+	Password        string `json:"password" validate:"required,min=6, max=18,password_special"`
 	ConfirmPassword string `json:"confirmPassword" validate:"required,eqfield=Password"`
 }
 
