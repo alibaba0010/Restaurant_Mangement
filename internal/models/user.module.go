@@ -3,9 +3,9 @@ package models
 import (
 	"time"
 
-	"context"
+	// "context"
 
-	"github.com/alibaba0010/postgres-api/internal/utils"
+	// "github.com/alibaba0010/postgres-api/internal/utils"
 	"github.com/uptrace/bun"
 )
 
@@ -17,19 +17,20 @@ type User struct {
 	Name      string    `bun:",notnull" json:"name"`
 	Email     string    `bun:",unique,notnull" json:"email"`
 	Password  string    `bun:",notnull" json:"-"`
-	Address string   `bun:",nullzero" json:"address,omitempty"`
+	Address   string    `bun:",nullzero" json:"address,omitempty"`
+	Role      string    `bun:",notnull,default:'user'" json:"role"`
 	CreatedAt time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"created_at"`
 	UpdatedAt time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"updated_at"`
 }
 
-	// BeforeInsert hook to generate UUIDv7 for ID if not set
-	func (u *User) BeforeInsert(ctx context.Context, _ bun.Query) error {
-	       if u.ID == "" {
-		       newUUID, err := utils.GenerateUUIDv7()
-		       if err != nil {
-			       return err
-		       }
-		       u.ID = newUUID.String()
-	       }
-	       return nil
-	}
+	// // BeforeInsert hook to generate UUIDv7 for ID if not set
+	// func (u *User) BeforeInsert(ctx context.Context, _ bun.Query) error {
+	//        if u.ID == "" {
+	// 	       newUUID, err := utils.GenerateUUIDv7()
+	// 	       if err != nil {
+	// 		       return err
+	// 	       }
+	// 	       u.ID = newUUID.String()
+	//        }
+	//        return nil
+	// }

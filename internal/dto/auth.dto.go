@@ -11,6 +11,7 @@ type SignupInput struct {
 	Email           string `json:"email" validate:"required,email"`
 	Password        string `json:"password" validate:"required,min=6,max=18,password_special"`
 	ConfirmPassword string `json:"confirmPassword" validate:"required,eqfield=Password"`
+	Role            string `json:"role" validate:"omitempty,oneof=user admin management"`
 }
 
 type SigninInput struct{}
@@ -24,6 +25,9 @@ type SignUpData struct {
 	ID    string `json:"id"`
 	Name  string `json:"name"`
 	Email string `json:"email"`
+	Role  string `json:"role"`
+	AccessToken  string `json:"access_token,omitempty"`
+	RefreshToken string `json:"refresh_token,omitempty"`
 }
 
 // RegisterValidators registers custom validators on the provided validator instance.

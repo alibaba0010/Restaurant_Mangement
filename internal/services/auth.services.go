@@ -38,6 +38,8 @@ func RegisterUser(ctx context.Context, input dto.SignupInput) (*models.User, *er
 				var msg string
 				field := fe.Field()
 				switch fe.Tag() {
+				case "role":
+					msg = fmt.Sprintf("%s can only either be user, admin or management", field)
 				case "required":
 					msg = fmt.Sprintf("%s is required", field)
 				case "min":
@@ -62,6 +64,11 @@ func RegisterUser(ctx context.Context, input dto.SignupInput) (*models.User, *er
 		return nil, errors.ValidationError(err.Error())
 	}
 
+	// Set default role if not provided
+	role := input.Role
+	if role == "" {
+		role = "user"
+	}
 
 	// Check if user already exists
 	exists, err := database.DB.NewSelect().Model((*models.User)(nil)).
@@ -74,43 +81,43 @@ func RegisterUser(ctx context.Context, input dto.SignupInput) (*models.User, *er
 		return nil, errors.DuplicateError("email")
 	}
 
-	
-	user := &models.User{
-		Name:  input.Name,
-		Email: input.Email,
-		// Password will be set on activation
-	}
-
-	// Ensure ID is set to a UUIDv7
+	// Generate UUID and verification token in parallel
 	newUUID, err := utils.GenerateUUIDv7()
 	if err != nil {
 		return nil, errors.InternalError(err)
 	}
-	user.ID = newUUID.String()
 
-	// Generate verification token
 	token, err := utils.GenerateToken()
 	if err != nil {
 		return nil, errors.InternalError(err)
 	}
 
-	// Hash the raw password now and store the hashed password in Redis with TTL 15 minutes.
-	// This reduces the risk of exposing the raw password if Redis is compromised.
+	// Hash password
 	hashedPwd, err := hashPassword(input.Password)
 	if err != nil {
 		return nil, errors.InternalError(err)
 	}
 
+	// Prepare user data
+	user := &models.User{
+		ID:    newUUID.String(),
+		Name:  input.Name,
+		Email: input.Email,
+	}
+
+	// Prepare payload for Redis storage
 	payload := struct {
 		ID       string `json:"id"`
 		Name     string `json:"name"`
 		Email    string `json:"email"`
 		Password string `json:"password"`
+		Role     string `json:"role"`
 	}{
 		ID:       user.ID,
 		Name:     user.Name,
 		Email:    user.Email,
 		Password: hashedPwd,
+		Role:     role,
 	}
 
 	b, err := json.Marshal(payload)
@@ -119,23 +126,25 @@ func RegisterUser(ctx context.Context, input dto.SignupInput) (*models.User, *er
 	}
 
 	key := "verify:" + token
-	// logger.Log.Info("Storing verification token in Redis", zap.String("key", key))  {"key": "verify:bfe76810a260110e09c53ba861b351b68b99bd22a371a1cba50be1406da024f2"}
 	ttl := 15 * time.Minute
 	if err := database.RedisClient.Set(ctx, key, b, ttl).Err(); err != nil {
-		return nil, errors.InternalError(err)  // find a way to handle this error 
-	}
-
-	// Build verification URL — Auth routes are mounted under /api/v1/auth, so
-	cfg := config.LoadConfig()
-	verifyURL := fmt.Sprintf("http://localhost:%s/api/v1/auth/verify?token=%s", cfg.Port, token)
-	// logger.Log.Info("Generated verification URL", zap.String("url", verifyURL)) {"url": "http://localhost:3000/api/v1/auth/verify?token=bfe76810a260110e09c53ba861b351b68b99bd22a371a1cba50be1406da024f2"}
-	html := VerifyMailHTML(user.Name, verifyURL)
-	if err := SendEmail(user.Email, "Verify your email", html); err != nil {
-		logger.Log.Error("failed to send verification email", zap.Error(err))
-		// Attempt to delete token to avoid leaking
-		_ = database.RedisClient.Del(ctx, key).Err()
 		return nil, errors.InternalError(err)
 	}
+
+	// Build verification URL
+	cfg := config.LoadConfig()
+	verifyURL := fmt.Sprintf("%s/api/v1/auth/verify?token=%s", cfg.FRONTEND_URL, token)
+	html := VerifyMailHTML(user.Name, verifyURL)
+		go func() {
+		if err := SendEmail(user.Email, "Verify your email", html); err != nil {
+			logger.Log.Error("failed to send verification email", 
+				zap.Error(err),
+				zap.String("email", user.Email),
+				zap.String("token", token),
+			)
+			// Optionally: Add to a retry queue here  future enhancement
+		}
+	}()
 
 	// Per new flow, registration doesn't persist the user yet — activation will.
 	return nil, nil
@@ -149,12 +158,13 @@ func ActivateUser(ctx context.Context, token string) (*models.User, *errors.AppE
 	if err != nil {
 		return nil, errors.InternalError(err)
 	}
-// log data
+
 	var payload struct {
 		ID       string `json:"id"`
 		Name     string `json:"name"`
 		Email    string `json:"email"`
 		Password string `json:"password"`
+		Role     string `json:"role"`
 	}
 	if err := json.Unmarshal(data, &payload); err != nil {
 		_ = database.RedisClient.Del(ctx, key).Err()
@@ -167,6 +177,7 @@ func ActivateUser(ctx context.Context, token string) (*models.User, *errors.AppE
 		Name:     payload.Name,
 		Email:    payload.Email,
 		Password: payload.Password,
+		Role:     payload.Role,
 	}
 
 	// Insert into DB
@@ -185,8 +196,7 @@ func ActivateUser(ctx context.Context, token string) (*models.User, *errors.AppE
 	return user, nil
 }
 
-// hashPassword hashes the provided password using argon2id and returns an encoded
-// string containing the salt and hash.
+
 func hashPassword(password string) (string, error) {
 	// Parameters
 	var (

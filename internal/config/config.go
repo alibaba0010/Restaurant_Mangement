@@ -23,6 +23,9 @@ type Config struct {
 	EMAIL_HOST string
 	EMAIL_USER string
 	EMAIL_PASSWORD string
+	FRONTEND_URL string
+	ACCESS_TOKEN_SECRET string
+	REFRESH_TOKEN_SECRET string
 }
 
 func LoadConfig() Config {
@@ -45,6 +48,9 @@ func LoadConfig() Config {
 		EMAIL_HOST:     getEnv("EMAIL_HOST", "smtp.gmail.com"),
 		EMAIL_USER:     getEnv("EMAIL_USER", ""),
 		EMAIL_PASSWORD: getEnv("EMAIL_PASSWORD", ""),
+		FRONTEND_URL:  getEnv("FRONTEND_URL", "http://localhost:3000"),
+		ACCESS_TOKEN_SECRET: getEnv("ACCESS_TOKEN_SECRET", "default_access_secret"),
+		REFRESH_TOKEN_SECRET: getEnv("REFRESH_TOKEN_SECRET", "default_refresh_secret"),
 	}
 }
 

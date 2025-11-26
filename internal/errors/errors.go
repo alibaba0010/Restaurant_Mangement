@@ -52,9 +52,13 @@ requestPath := request.URL.Path
     // Log minimal info only. Do NOT print internal error details or stack traces to console.
     // For client-side/non-critical errors (4xx) log as Info; for server errors (5xx) log as Error
     if appErr.Status >= 500 {
-        logger.Log.Error(appErr.Title, zap.Int("status", appErr.Status), zap.String("path", requestPath),)
+        if appErr.Err != nil {
+            logger.Log.Error(appErr.Title, zap.Int("status", appErr.Status), zap.String("path", requestPath), zap.Error(appErr.Err))
+        } else {
+            logger.Log.Error(appErr.Title, zap.Int("status", appErr.Status), zap.String("path", requestPath))
+        }
     } else {
-        logger.Log.Error(appErr.Title, zap.Int("status", appErr.Status), zap.String("path", requestPath),)
+        logger.Log.Info(appErr.Title, zap.Int("status", appErr.Status), zap.String("path", requestPath))
     }
 
     // Respond to client (only public info)
@@ -68,15 +72,3 @@ requestPath := request.URL.Path
     }
     _ = json.NewEncoder(writer).Encode(resp)
 }
-// func (e *AppError) Error() string {
-//     if e == nil {
-//         return ""
-//     }
-//     if e.Message != "" {
-//         return e.Message
-//     }
-//     if e.Err != nil {
-//         return e.Err.Error()
-//     }
-//     return http.StatusText(e.Status)
-// }
