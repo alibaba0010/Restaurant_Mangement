@@ -22,48 +22,17 @@ const authPaths = `
 				}
 			],
 			"responses": {
-				"201": {
-					"description": "User created successfully",
-					"schema": {
-						"type": "object",
-						"properties": {
-							"title": {
-								"type": "string",
-								"example": "Success"
-							},
-							"message": {
-								"type": "string",
-								"example": "User created successfully"
-							},
-							"user": {
+						"201": {
+							"description": "Signup accepted - verification email sent",
+							"schema": {
 								"type": "object",
 								"properties": {
-									"id": {
-										"type": "string",
-										"format": "uuid"
-									},
-									"name": {
-										"type": "string"
-									},
-									"email": {
-										"type": "string",
-										"format": "email"
-									}
+									"title": { "type": "string", "example": "Success" },
+									"message": { "type": "string", "example": "Please check your email for a verification link" }
 								},
-								"required": [
-									"id",
-									"name",
-									"email"
-								]
+								"required": ["title","message"]
 							}
 						},
-						"required": [
-							"title",
-							"message",
-							"user"
-						]
-					}
-				},
 				"400": {
 					"description": "Validation error",
 					"schema": {
@@ -104,7 +73,7 @@ const authPaths = `
 			"responses": {
 				"200": {
 					"description": "User activated successfully",
-					"schema": {"$ref": "#/definitions/User"}
+					"schema": {"$ref": "#/definitions/SignUpResponse"}
 				},
 				"400": {"description": "Validation error", "schema": {"$ref": "#/definitions/Error"}},
 				"404": {"description": "User not found", "schema": {"$ref": "#/definitions/Error"}},

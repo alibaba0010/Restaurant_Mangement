@@ -1,7 +1,26 @@
 package docs
 
 // Users API endpoints documentation
+
 const usersPaths = `
+
+	"/user": {
+		"get": {
+			"tags": [
+				"Users"
+			],
+			"summary": "Get current authenticated user",
+			"description": "Retrieve info about the currently authenticated user",
+			"operationId": "currentUser",
+			"security": [ { "Bearer": [] } ],
+			"responses": {
+				"200": { "description": "Successful operation", "schema": { "$ref": "#/definitions/User" } },
+				"401": { "description": "Unauthorized", "schema": { "$ref": "#/definitions/Error" } },
+				"500": { "description": "Internal server error", "schema": { "$ref": "#/definitions/Error" } }
+			}
+		}
+	},
+
 	"/users": {
 		"get": {
 			"tags": [

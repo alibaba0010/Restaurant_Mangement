@@ -32,6 +32,13 @@ const definitions = `
 					"type": "string",
 					"format": "email"
 				},
+				"address": {
+					"type": "string"
+				},
+				"role": {
+					"type": "string",
+					"example": "user"
+				},
 				"created_at": {
 					"type": "string",
 					"format": "date-time"
@@ -76,6 +83,25 @@ const definitions = `
 				"password",
 				"confirmPassword"
 			]
+		},
+		"SignUpResponse": {
+			"type": "object",
+			"properties": {
+				"title": { "type": "string" },
+				"data": {
+					"type": "object",
+					"properties": {
+						"id": { "type": "string", "format": "uuid" },
+						"name": { "type": "string" },
+						"email": { "type": "string", "format": "email" },
+						"role": { "type": "string" },
+						"access_token": { "type": "string" },
+						"refresh_token": { "type": "string" }
+					},
+					"required": ["id","name","email","role","access_token"]
+				}
+			},
+			"required": ["title","data"]
 		},
 		"UserInput": {
 			"type": "object",

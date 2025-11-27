@@ -18,19 +18,7 @@ import (
 	"github.com/alibaba0010/postgres-api/internal/utils"
 )
 
-// SignupHandler godoc
-//
-//	@Summary		User Signup
-//	@Description	Creates a new user account
-//	@Tags			Auth
-//	@Accept			json
-//	@Produce		json
-//	@Param			body	body		dto.SignupInput	true	"Signup request"
-//	@Success		201	{object}	map[string]interface{} "User created successfully"
-//	@Failure		400	{object}	map[string]string		"Validation error"
-//	@Failure		409	{object}	map[string]string		"Duplicate email"
-//	@Failure		500	{object}	map[string]string		"Internal server error"
-//	@Router			/auth/signup [post]
+
 func SignupHandler(writer http.ResponseWriter, request *http.Request) {
 	var input dto.SignupInput
 
