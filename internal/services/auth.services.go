@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/go-playground/validator/v10"
@@ -38,7 +39,7 @@ func RegisterUser(ctx context.Context, input dto.SignupInput) (*models.User, *er
 				var msg string
 				field := fe.Field()
 				switch fe.Tag() {
-				case "role":
+				case "oneof":
 					msg = fmt.Sprintf("%s can only either be user, admin or management", field)
 				case "required":
 					msg = fmt.Sprintf("%s is required", field)
@@ -197,6 +198,71 @@ func ActivateUser(ctx context.Context, token string) (*models.User, *errors.AppE
 }
 
 
+// LoginUser authenticates a user by email and password
+// Returns the user and generated token pair if successful
+func LoginUser(ctx context.Context, email, password string) (*models.User, *TokenPair, *errors.AppError) {
+	if email == "" || password == "" {
+		return nil, nil, errors.ValidationError("email and password are required")
+	}
+
+	// Fetch user by email
+	user := &models.User{}
+	err := database.DB.NewSelect().Model(user).
+		Where("email = ?", email).
+		Scan(ctx)
+	if err != nil {
+		logger.Log.Debug("user not found for login", zap.String("email", email))
+		return nil, nil, errors.UnauthorizedError("invalid email or password")
+	}
+
+	// Verify password
+	if !verifyPassword(password, user.Password) {
+		logger.Log.Warn("invalid password for login", zap.String("email", email))
+		return nil, nil, errors.UnauthorizedError("invalid email or password")
+	}
+
+	logger.Log.Debug("user authenticated successfully", zap.String("user_id", user.ID), zap.String("email", email))
+	return user, nil, nil
+}
+
+// VerifyPassword compares a plaintext password with an argon2id hash
+func verifyPassword(password, hash string) bool {
+	// Parse hash components
+	parts := strings.Split(hash, "$")
+	if len(parts) != 6 {
+		return false
+	}
+
+	// Extract salt and hash from hash string
+	b64Salt := parts[4]
+	b64Hash := parts[5]
+
+	salt, err := base64.RawStdEncoding.DecodeString(b64Salt)
+	if err != nil {
+		return false
+	}
+
+	originalHash, err := base64.RawStdEncoding.DecodeString(b64Hash)
+	if err != nil {
+		return false
+	}
+
+	// Use same parameters as hash creation
+	var (
+		timeParam uint32 = 1
+		memory    uint32 = 64 * 1024
+		threads   uint8  = 4
+		keyLen    uint32 = 32
+	)
+
+	// Hash the provided password with the same salt
+	newHash := argon2.IDKey([]byte(password), salt, timeParam, memory, threads, keyLen)
+
+	// Compare hashes
+	return string(newHash) == string(originalHash)
+}
+
+// hashPassword creates an argon2id hash of the password
 func hashPassword(password string) (string, error) {
 	// Parameters
 	var (

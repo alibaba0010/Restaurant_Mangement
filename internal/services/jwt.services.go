@@ -112,3 +112,75 @@ func GenerateTokenPair(ctx context.Context, userID, role, ip, userAgent string) 
 
 	return &TokenPair{AccessToken: accessStr, RefreshToken: refreshStr}, nil
 }
+
+func VerifyAccessToken(tokenString string) (*AccessTokenClaims, *errors.AppError) {
+	cfg := config.LoadConfig()
+
+	claims := &AccessTokenClaims{}
+	token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (any, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, errors.UnauthorizedError("invalid token signing method")
+		}
+		return []byte(cfg.ACCESS_TOKEN_SECRET), nil
+	})
+
+	if err != nil || !token.Valid {
+		logger.Log.Debug("access token verification failed", zap.Error(err))
+		return nil, errors.UnauthorizedError("invalid or expired access token")
+	}
+
+	return claims, nil
+}
+
+// ValidateRefreshToken verifies the refresh token JWT and returns claims if valid.
+func ValidateRefreshToken(tokenString string) (*RefreshTokenClaims, *errors.AppError) {
+	cfg := config.LoadConfig()
+
+	claims := &RefreshTokenClaims{}
+	token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (any, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, errors.UnauthorizedError("invalid token signing method")
+		}
+		return []byte(cfg.REFRESH_TOKEN_SECRET), nil
+	})
+
+	if err != nil || !token.Valid {
+		logger.Log.Debug("refresh token verification failed", zap.Error(err))
+		return nil, errors.UnauthorizedError("invalid or expired refresh token")
+	}
+
+	return claims, nil
+}
+
+func RefreshAccessToken(ctx context.Context, refreshTokenString string, userID string, ip string, userAgent string) (*TokenPair, *errors.AppError) {
+	// Verify the refresh token JWT signature and expiration
+	claims, appErr := ValidateRefreshToken(refreshTokenString)
+	if appErr != nil {
+		return nil, appErr
+	}
+
+	// Check if refresh token exists in database and matches
+	rt := &models.RefreshToken{}
+	exists, err := database.DB.NewSelect().Model(rt).
+		Where("user_id = ? AND token = ?", userID, refreshTokenString).
+		Limit(1).
+		Exists(ctx)
+
+	if err != nil {
+		logger.Log.Error("failed to query refresh token from DB", zap.Error(err))
+		return nil, errors.InternalError(err)
+	}
+
+	if !exists {
+		logger.Log.Warn("refresh token not found in database", zap.String("user_id", userID))
+		return nil, errors.UnauthorizedError("refresh token invalid or revoked")
+	}
+
+	// Token is valid and exists in DB, generate new token pair
+	newTokenPair, appErr := GenerateTokenPair(ctx, claims.UserID, claims.Role, ip, userAgent)
+	if appErr != nil {
+		return nil, appErr
+	}
+
+	return newTokenPair, nil
+}

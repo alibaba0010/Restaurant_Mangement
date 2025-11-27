@@ -14,7 +14,25 @@ type SignupInput struct {
 	Role            string `json:"role" validate:"omitempty,oneof=user admin management"`
 }
 
-type SigninInput struct{}
+type SigninInput struct {
+	Email    string `json:"email" validate:"required,email"`
+	Password string `json:"password" validate:"required,min=6"`
+}
+
+// SigninResponse contains user info and tokens after successful login
+type SigninResponse struct {
+	Title string     `json:"title"`
+	Data  SigninData `json:"data"`
+}
+
+type SigninData struct {
+	ID           string `json:"id"`
+	Name         string `json:"name"`
+	Email        string `json:"email"`
+	Role         string `json:"role"`
+	AccessToken  string `json:"access_token"`
+	RefreshToken string `json:"refresh_token,omitempty"`
+}
 
 // Response is a generic API response envelope used across handlers.
 type SignUpResponse struct {

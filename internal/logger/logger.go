@@ -2,6 +2,7 @@ package logger
 
 import (
 	"os"
+	"strings"
 	"time"
 
 	"go.uber.org/zap"
@@ -28,10 +29,23 @@ func InitLogger() {
 	consoleEncoder := zapcore.NewConsoleEncoder(config)
 	
 	// Write to stderr for console output
+	// Allow LOG_LEVEL env var to control log level (debug|info|warn|error)
+	lvl := zapcore.InfoLevel
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("LOG_LEVEL"))) {
+	case "debug":
+		lvl = zapcore.DebugLevel
+	case "info":
+		lvl = zapcore.InfoLevel
+	case "warn", "warning":
+		lvl = zapcore.WarnLevel
+	case "error":
+		lvl = zapcore.ErrorLevel
+	}
+
 	core := zapcore.NewCore(
 		consoleEncoder,
 		zapcore.AddSync(os.Stderr),
-		zapcore.InfoLevel,
+		lvl,
 	)
 
 	// Create logger without caller or stacktrace

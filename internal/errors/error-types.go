@@ -33,6 +33,13 @@ func NotFoundError(message string) *AppError {
 	return New("Not Found", message, http.StatusNotFound, nil)
 }
 
+func UnauthorizedError(message string) *AppError {
+	return New("Unauthorized", message, http.StatusUnauthorized, nil)
+}
+
+func ForbiddenError(message string) *AppError {
+	return New("Forbidden", message, http.StatusForbidden, nil)
+}
 
 func InternalError(err error) *AppError {
 	if err == nil {

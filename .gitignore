@@ -34,3 +34,8 @@ go.work.sum
 tmp/main
 internal/migration/*
 .vscode/launch.json
+# Ignore all Markdown files
+*.md
+
+# Except for the main README file
+!README.md

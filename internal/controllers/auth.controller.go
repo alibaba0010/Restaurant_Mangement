@@ -2,10 +2,12 @@ package controllers
 
 import (
 	"encoding/json"
- 	"fmt"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/go-playground/validator/v10"
 
 	"github.com/alibaba0010/postgres-api/internal/config"
 	"github.com/alibaba0010/postgres-api/internal/database"
@@ -13,6 +15,7 @@ import (
 	"github.com/alibaba0010/postgres-api/internal/errors"
 	"github.com/alibaba0010/postgres-api/internal/models"
 	"github.com/alibaba0010/postgres-api/internal/services"
+	"github.com/alibaba0010/postgres-api/internal/utils"
 )
 
 // SignupHandler godoc
@@ -67,22 +70,7 @@ func ActivateUserHandler(writer http.ResponseWriter, request *http.Request) {
 
 	// generate token pair and set refresh token cookie
 	// extract IP and user-agent
-	var ip string
-	if xf := request.Header.Get("X-Forwarded-For"); xf != "" {
-		// may be comma-separated
-		parts := strings.Split(xf, ",")
-		ip = strings.TrimSpace(parts[0])
-	} else if xr := request.Header.Get("X-Real-Ip"); xr != "" {
-		ip = xr
-	} else {
-		// remote addr may include port
-		remote := request.RemoteAddr
-		if i := strings.LastIndex(remote, ":"); i != -1 {
-			ip = remote[:i]
-		} else {
-			ip = remote
-		}
-	}
+	ip:= utils.ExtractClientIP(request)
 	ua := request.Header.Get("User-Agent")
 
 	tokens, appErr := services.GenerateTokenPair(request.Context(), user.ID, user.Role, ip, ua)
@@ -90,6 +78,7 @@ func ActivateUserHandler(writer http.ResponseWriter, request *http.Request) {
 		errors.ErrorResponse(writer, request, appErr)
 		return
 	}
+	request.Header.Set("Authorization", "Bearer "+tokens.AccessToken)
 
 	// set refresh token cookie
 	cfg := config.LoadConfig()
@@ -125,9 +114,80 @@ func ActivateUserHandler(writer http.ResponseWriter, request *http.Request) {
 	_ = json.NewEncoder(writer).Encode(resp)
 }
 
-// ResendVerificationHandler resends the verification email for a pending signup.
-// It looks up pending verification tokens in Redis (scan) by email and resends
-// the existing token's verification link.
+func SigninHandler(writer http.ResponseWriter, request *http.Request) {
+	var input dto.SigninInput
+
+	// Decode JSON
+	if err := json.NewDecoder(request.Body).Decode(&input); err != nil {
+		errors.ErrorResponse(writer, request, errors.ValidationError("Invalid JSON body"))
+		return
+	}
+
+	// Trim email
+	input.Email = strings.TrimSpace(input.Email)
+	input.Password = strings.TrimSpace(input.Password)
+
+	// Validate input
+	validate := validator.New()
+	if err := validate.Struct(input); err != nil {
+		errors.ErrorResponse(writer, request, errors.ValidationError("email and password are required"))
+		return
+	}
+
+	// Authenticate user
+	user, _, appErr := services.LoginUser(request.Context(), input.Email, input.Password)
+	if appErr != nil {
+		errors.ErrorResponse(writer, request, appErr)
+		return
+	}
+
+	// Extract client IP and User-Agent
+	ip := utils.ExtractClientIP(request)
+	userAgent := request.Header.Get("User-Agent")
+
+	// Generate token pair
+	tokens, appErr := services.GenerateTokenPair(request.Context(), user.ID, user.Role, ip, userAgent)
+	if appErr != nil {
+		errors.ErrorResponse(writer, request, appErr)
+		return
+	}
+	
+	request.Header.Set("Authorization", "Bearer "+tokens.AccessToken)
+
+	// Set refresh token cookie
+	cfg := config.LoadConfig()
+	cookie := &http.Cookie{
+		Name:     "refresh_token",
+		Value:    tokens.RefreshToken,
+		HttpOnly: true,
+		Path:     "/",
+		Expires:  time.Now().Add(services.RefreshTokenDuration),
+		Secure:   false,
+		SameSite: http.SameSiteLaxMode,
+	}
+	if strings.HasPrefix(cfg.FRONTEND_URL, "https") {
+		cookie.Secure = true
+	}
+	http.SetCookie(writer, cookie)
+
+	// Return response
+	resp := dto.SigninResponse{
+		Title: "Signin successful",
+		Data: dto.SigninData{
+			ID:           user.ID,
+			Name:         user.Name,
+			Email:        user.Email,
+			Role:         user.Role,
+			AccessToken:  tokens.AccessToken,
+			RefreshToken: tokens.RefreshToken,
+		},
+	}
+
+	writer.Header().Set("Content-Type", "application/json")
+	writer.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(writer).Encode(resp)
+}
+
 func ResendVerificationHandler(writer http.ResponseWriter, request *http.Request) {
 	var body struct{
 		Email string `json:"email"`
