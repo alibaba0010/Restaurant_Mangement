@@ -55,6 +55,36 @@ const authPaths = `
 		}
 	},
 
+		"/auth/refresh": {
+			"post": {
+				"tags": ["Auth"],
+				"summary": "Refresh access token",
+				"description": "Rotates and issues a new access token using the refresh token cookie",
+				"operationId": "refreshToken",
+				"responses": {
+					"200": {"description": "New access token", "schema": {"type": "object", "properties": {"access_token": {"type": "string"}}}},
+					"401": {"description": "Unauthorized or invalid refresh token", "schema": {"$ref": "#/definitions/Error"}},
+					"500": {"description": "Internal server error", "schema": {"$ref": "#/definitions/Error"}}
+				}
+			}
+		},
+
+		"/auth/resend": {
+			"post": {
+				"tags": ["Auth"],
+				"summary": "Resend verification email",
+				"description": "Resends account verification email if a pending verification exists",
+				"operationId": "resendVerification",
+				"parameters": [{"in": "body", "name": "body", "required": true, "schema": {"type": "object", "properties": {"email": {"type": "string", "format": "email"}}, "required": ["email"]}}],
+				"responses": {
+					"200": {"description": "Verification email resent", "schema": {"type": "object", "properties": {"message": {"type": "string"}}}},
+					"400": {"description": "Validation error", "schema": {"$ref": "#/definitions/Error"}},
+					"404": {"description": "Verification token not found", "schema": {"$ref": "#/definitions/Error"}},
+					"500": {"description": "Internal server error", "schema": {"$ref": "#/definitions/Error"}}
+				}
+			}
+		},
+
 	"/auth/verify": {
 		"get": {
 			"tags": ["Auth"],

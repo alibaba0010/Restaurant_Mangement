@@ -8,7 +8,7 @@
 4. User clicks the verification link → GET /auth/verify?token=...; controller/service reads `verify:<token>` from Redis. If missing/expired, returns 400 (invalid/expired); otherwise proceeds.
 5. Service creates the user in Postgres using the hashed password stored in the Redis payload, deletes the Redis token, and returns 200 (activation success).
 
-## Summary & checklist (concise)
+## Summary & checklists (concise)
 
 - Token storage: verification tokens are stored in Redis with TTL (15 minutes). Payload stores hashed password rather than raw password.
 - Hashing: argon2id is used for password hashing; encoded string stores params + salt + hash.

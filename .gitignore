@@ -39,3 +39,5 @@ internal/migration/*
 
 # Except for the main README file
 !README.md
+docs/*.md
+docs/SIGNUP_IMPROVEMENTS.md

@@ -6,9 +6,7 @@ const usersPaths = `
 
 	"/user": {
 		"get": {
-			"tags": [
-				"Users"
-			],
+			"tags": ["Users"],
 			"summary": "Get current authenticated user",
 			"description": "Retrieve info about the currently authenticated user",
 			"operationId": "currentUser",
@@ -18,85 +16,49 @@ const usersPaths = `
 				"401": { "description": "Unauthorized", "schema": { "$ref": "#/definitions/Error" } },
 				"500": { "description": "Internal server error", "schema": { "$ref": "#/definitions/Error" } }
 			}
-		}
-	},
-
-	"/users": {
-		"get": {
-			"tags": [
-				"Users"
-			],
-			"summary": "List all users",
-			"description": "Returns a list of users in the system",
-			"operationId": "listUsers",
-			"security": [
-				{
-					"Bearer": []
-				}
-			],
+		},
+		"patch": {
+			"tags": ["Users"],
+			"summary": "Update current user's address",
+			"description": "Updates the authenticated user's address",
+			"operationId": "updateUserAddress",
+			"security": [ { "Bearer": [] } ],
+			"parameters": [{"in":"body","name":"body","required":true,"schema":{"$ref":"#/definitions/UpdateAddressInput"}}],
 			"responses": {
-				"200": {
-					"description": "Successful operation",
-					"schema": {
-						"type": "object",
-						"properties": {
-							"title": { "type": "string", "example": "Success" },
-							"data": { "type": "array", "items": { "$ref": "#/definitions/User" } }
-						},
-						"required": ["title","data"]
-					}
-				},
-				"401": {
-					"description": "Unauthorized",
-					"schema": {
-						"$ref": "#/definitions/Error"
-					}
-				},
-				"500": {
-					"description": "Internal server error",
-					"schema": {
-						"$ref": "#/definitions/Error"
-					}
-				}
+				"200": {"description":"Updated","schema":{"$ref":"#/definitions/UpdateAddressResponse"}},
+				"400": {"description":"Validation error","schema":{"$ref":"#/definitions/Error"}},
+				"401": {"description":"Unauthorized","schema":{"$ref":"#/definitions/Error"}},
+				"500": {"description":"Internal server error","schema":{"$ref":"#/definitions/Error"}}
+			}
+		},
+		"post": {
+			"tags": ["Users"],
+			"summary": "Logout current user",
+			"description": "Revokes refresh tokens and clears cookie",
+			"operationId": "logout",
+			"security": [ { "Bearer": [] } ],
+			"responses": {
+				"200": {"description":"Logged out","schema":{"$ref":"#/definitions/LogoutResponse"}},
+				"401": {"description":"Unauthorized","schema":{"$ref":"#/definitions/Error"}},
+				"500": {"description":"Internal server error","schema":{"$ref":"#/definitions/Error"}}
 			}
 		}
 	},
-	"/users/{id}": {
+
+	"/user/{id}": {
 		"get": {
-			"tags": [
-				"Users"
-			],
+			"tags": ["Users"],
 			"summary": "Get user by ID",
-			"description": "Returns a single user",
+			"description": "Returns a single user (admin role required)",
 			"operationId": "getUser",
-			"parameters": [
-				{
-					"name": "id",
-					"in": "path",
-					"description": "ID of user to return",
-					"required": true,
-					"type": "string"
-				}
-			],
+			"security": [ { "Bearer": [] } ],
+			"parameters": [{"name":"id","in":"path","description":"ID of user to return","required":true,"type":"string"}],
 			"responses": {
-				"200": {
-					"description": "Successful operation",
-					"schema": {
-						"$ref": "#/definitions/User"
-					}
-				},
-				"404": {
-					"description": "User not found",
-					"schema": {
-						"$ref": "#/definitions/Error"
-					}
-				},
-				"500": {
-					"description": "Internal server error",
-					"schema": {
-						"$ref": "#/definitions/Error"
-					}
-				}
+				"200": {"description":"Successful operation","schema":{"$ref":"#/definitions/User"}},
+				"401": {"description":"Unauthorized","schema":{"$ref":"#/definitions/Error"}},
+				"403": {"description":"Forbidden - requires admin role","schema":{"$ref":"#/definitions/Error"}},
+				"404": {"description":"User not found","schema":{"$ref":"#/definitions/Error"}},
+				"500": {"description":"Internal server error","schema":{"$ref":"#/definitions/Error"}}
 			}
 		}
 	},
