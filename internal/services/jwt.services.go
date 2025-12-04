@@ -2,13 +2,14 @@ package services
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 
 	"github.com/alibaba0010/postgres-api/internal/config"
 	"github.com/alibaba0010/postgres-api/internal/database"
-	"github.com/alibaba0010/postgres-api/internal/errors"
+	apierrors "github.com/alibaba0010/postgres-api/internal/errors"
 	"github.com/alibaba0010/postgres-api/internal/logger"
 	"github.com/alibaba0010/postgres-api/internal/models"
 	"github.com/alibaba0010/postgres-api/internal/utils"
@@ -47,7 +48,7 @@ type RefreshTokenStorage interface {
 	DeleteUserRefreshTokens(ctx context.Context, userID string) error
 }
 
-func GenerateTokenPair(ctx context.Context, userID, role, ip, userAgent string) (*TokenPair, *errors.AppError) {
+func GenerateTokenPair(ctx context.Context, userID, role, ip, userAgent string) (*TokenPair, *apierrors.AppError) {
 	cfg := config.LoadConfig()
 
 	now := time.Now()
@@ -67,7 +68,7 @@ func GenerateTokenPair(ctx context.Context, userID, role, ip, userAgent string) 
 	accessStr, err := accessTok.SignedString([]byte(cfg.ACCESS_TOKEN_SECRET))
 	if err != nil {
 		logger.Log.Error("failed to sign access token", zap.Error(err))
-		return nil, errors.InternalError(err)
+		return nil, apierrors.InternalError(err)
 	}
 
 	// Refresh token
@@ -87,14 +88,14 @@ func GenerateTokenPair(ctx context.Context, userID, role, ip, userAgent string) 
 	refreshStr, err := refreshTok.SignedString([]byte(cfg.REFRESH_TOKEN_SECRET))
 	if err != nil {
 		logger.Log.Error("failed to sign refresh token", zap.Error(err))
-		return nil, errors.InternalError(err)
+		return nil, apierrors.InternalError(err)
 	}
 
 	// Persist refresh token in DB
 	newUUID, err := utils.GenerateUUIDv7()
 	if err != nil {
 		logger.Log.Error("failed to generate UUID for refresh token", zap.Error(err))
-		return nil, errors.InternalError(err)
+		return nil, apierrors.InternalError(err)
 	}
 
 	rt := &models.RefreshToken{
@@ -107,52 +108,62 @@ func GenerateTokenPair(ctx context.Context, userID, role, ip, userAgent string) 
 	}
 	if _, err := database.DB.NewInsert().Model(rt).Exec(ctx); err != nil {
 		logger.Log.Error("failed to store refresh token", zap.Error(err))
-		return nil, errors.InternalError(err)
+		return nil, apierrors.InternalError(err)
 	}
 
 	return &TokenPair{AccessToken: accessStr, RefreshToken: refreshStr}, nil
 }
 
-func VerifyAccessToken(tokenString string) (*AccessTokenClaims, *errors.AppError) {
+func VerifyAccessToken(tokenString string) (*AccessTokenClaims, *apierrors.AppError) {
 	cfg := config.LoadConfig()
 
 	claims := &AccessTokenClaims{}
 	token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (any, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, errors.UnauthorizedError("invalid token signing method")
+			return nil, apierrors.UnauthorizedError("invalid token signing method")
 		}
 		return []byte(cfg.ACCESS_TOKEN_SECRET), nil
 	})
 
-	if err != nil || !token.Valid {
+	if err != nil {
+		// Check if error is due to token expiration
+		if errors.Is(err, jwt.ErrTokenExpired) {
+			logger.Log.Debug("access token expired", zap.Error(err))
+			return nil, apierrors.UnauthorizedError("access token is expired")
+		}
 		logger.Log.Debug("access token verification failed", zap.Error(err))
-		return nil, errors.UnauthorizedError("invalid or expired access token")
+		return nil, apierrors.UnauthorizedError("access token is invalid")
+	}
+
+	if !token.Valid {
+		logger.Log.Debug("access token is not valid")
+		return nil, apierrors.UnauthorizedError("access token is invalid")
 	}
 
 	return claims, nil
 }
 
 // ValidateRefreshToken verifies the refresh token JWT and returns claims if valid.
-func ValidateRefreshToken(tokenString string) (*RefreshTokenClaims, *errors.AppError) {
+func ValidateRefreshToken(tokenString string) (*RefreshTokenClaims, *apierrors.AppError) {
 	cfg := config.LoadConfig()
 
 	claims := &RefreshTokenClaims{}
 	token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (any, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, errors.UnauthorizedError("invalid token signing method")
+			return nil, apierrors.UnauthorizedError("invalid token signing method")
 		}
 		return []byte(cfg.REFRESH_TOKEN_SECRET), nil
 	})
 
 	if err != nil || !token.Valid {
 		logger.Log.Debug("refresh token verification failed", zap.Error(err))
-		return nil, errors.UnauthorizedError("invalid or expired refresh token")
+		return nil, apierrors.UnauthorizedError("invalid or expired refresh token")
 	}
 
 	return claims, nil
 }
 
-func RefreshAccessToken(ctx context.Context, refreshTokenString string, userID string, ip string, userAgent string) (*TokenPair, *errors.AppError) {
+func RefreshAccessToken(ctx context.Context, refreshTokenString string, userID string, ip string, userAgent string) (*TokenPair, *apierrors.AppError) {
 	// Verify the refresh token JWT signature and expiration
 	claims, appErr := ValidateRefreshToken(refreshTokenString)
 	if appErr != nil {
@@ -168,12 +179,12 @@ func RefreshAccessToken(ctx context.Context, refreshTokenString string, userID s
 
 	if err != nil {
 		logger.Log.Error("failed to query refresh token from DB", zap.Error(err))
-		return nil, errors.InternalError(err)
+		return nil, apierrors.InternalError(err)
 	}
 
 	if !exists {
 		logger.Log.Warn("refresh token not found in database", zap.String("user_id", userID))
-		return nil, errors.UnauthorizedError("refresh token invalid or revoked")
+		return nil, apierrors.UnauthorizedError("user login")
 	}
 
 	// Token is valid and exists in DB, generate new token pair

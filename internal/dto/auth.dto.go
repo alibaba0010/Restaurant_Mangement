@@ -48,6 +48,30 @@ type SignUpData struct {
 	RefreshToken string `json:"refresh_token,omitempty"`
 }
 
+// UpdateAddressInput is used for updating a user's address
+type UpdateAddressInput struct {
+	Address string `json:"address" validate:"required,min=5,max=255"`
+}
+
+// UpdateAddressResponse contains the updated user data after address update
+type UpdateAddressResponse struct {
+	Title string `json:"title"`
+	Data  struct {
+		ID        string `json:"id"`
+		Name      string `json:"name"`
+		Email     string `json:"email"`
+		Address   string `json:"address"`
+		Role      string `json:"role"`
+		UpdatedAt string `json:"updated_at"`
+	} `json:"data"`
+}
+
+// LogoutResponse is returned after a successful logout
+type LogoutResponse struct {
+	Title   string `json:"title"`
+	Message string `json:"message"`
+}
+
 // RegisterValidators registers custom validators on the provided validator instance.
 func RegisterValidators(v *validator.Validate) {
 	_ = v.RegisterValidation("password_special", validatePasswordSpecial)

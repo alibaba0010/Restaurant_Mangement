@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/go-playground/validator/v10"
 
@@ -16,6 +15,7 @@ import (
 	"github.com/alibaba0010/postgres-api/internal/models"
 	"github.com/alibaba0010/postgres-api/internal/services"
 	"github.com/alibaba0010/postgres-api/internal/utils"
+	"github.com/alibaba0010/postgres-api/internal/guards"
 )
 
 
@@ -69,21 +69,7 @@ func ActivateUserHandler(writer http.ResponseWriter, request *http.Request) {
 	request.Header.Set("Authorization", "Bearer "+tokens.AccessToken)
 
 	// set refresh token cookie
-	cfg := config.LoadConfig()
-	cookie := &http.Cookie{
-		Name:     "refresh_token",
-		Value:    tokens.RefreshToken,
-		HttpOnly: true,
-		Path:     "/",
-		Expires:  time.Now().Add(services.RefreshTokenDuration),
-		Secure:   false,
-		SameSite: http.SameSiteLaxMode,
-	}
-	// If running behind TLS, make cookie secure
-	if strings.HasPrefix(cfg.FRONTEND_URL, "https") {
-		cookie.Secure = true
-	}
-	http.SetCookie(writer, cookie)
+	utils.SetRefreshTokenCookie(writer, tokens.RefreshToken, services.RefreshTokenDuration)
 
 	// Return created user (omit password) + tokens
 	resp := dto.SignUpResponse{
@@ -143,20 +129,7 @@ func SigninHandler(writer http.ResponseWriter, request *http.Request) {
 	request.Header.Set("Authorization", "Bearer "+tokens.AccessToken)
 
 	// Set refresh token cookie
-	cfg := config.LoadConfig()
-	cookie := &http.Cookie{
-		Name:     "refresh_token",
-		Value:    tokens.RefreshToken,
-		HttpOnly: true,
-		Path:     "/",
-		Expires:  time.Now().Add(services.RefreshTokenDuration),
-		Secure:   false,
-		SameSite: http.SameSiteLaxMode,
-	}
-	if strings.HasPrefix(cfg.FRONTEND_URL, "https") {
-		cookie.Secure = true
-	}
-	http.SetCookie(writer, cookie)
+	utils.SetRefreshTokenCookie(writer, tokens.RefreshToken, services.RefreshTokenDuration)
 
 	// Return response
 	resp := dto.SigninResponse{
@@ -249,4 +222,81 @@ func ResendVerificationHandler(writer http.ResponseWriter, request *http.Request
 	writer.Header().Set("Content-Type", "application/json")
 	writer.WriteHeader(http.StatusOK)
 	_ = json.NewEncoder(writer).Encode(map[string]string{"message": "Verification email resent"})
+}
+
+// RefreshTokenHandler handles token refresh using the refresh token cookie.
+// Extracts refresh token, calls service for validation and rotation,
+// sets new cookie, and returns new access token.
+func RefreshTokenHandler(writer http.ResponseWriter, request *http.Request) {
+	// Extract refresh token from cookie
+	refreshCookie, err := request.Cookie("refresh_token")
+	if err != nil {
+		errors.ErrorResponse(writer, request, errors.UnauthorizedError("refresh token missing; please login again"))
+		return
+	}
+
+	refreshToken := refreshCookie.Value
+	if refreshToken == "" {
+		errors.ErrorResponse(writer, request, errors.UnauthorizedError("refresh token missing; please login again"))
+		return
+	}
+
+	// Extract IP and User-Agent for new token
+	ip := utils.ExtractClientIP(request)
+	userAgent := request.Header.Get("User-Agent")
+
+	// Refresh token with rotation
+	newTokenPair, appErr := services.RefreshTokenWithRotation(request.Context(), refreshToken, ip, userAgent)
+	if appErr != nil {
+		errors.ErrorResponse(writer, request, appErr)
+		return
+	}
+
+	// Set new refresh token cookie
+	utils.SetRefreshTokenCookie(writer, newTokenPair.RefreshToken, services.RefreshTokenDuration)
+
+	// Return new access token
+	resp := map[string]string{
+		"access_token": newTokenPair.AccessToken,
+	}
+
+	writer.Header().Set("Content-Type", "application/json")
+	writer.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(writer).Encode(resp)
+}
+
+// LogoutHandler logs out the current user by revoking all their refresh tokens
+func LogoutHandler(writer http.ResponseWriter, request *http.Request) {
+	authenticatedUser := guards.ExtractAuthenticatedUser(request)
+	if authenticatedUser == nil {
+		errors.ErrorResponse(writer, request, errors.UnauthorizedError("user not authenticated"))
+		return
+	}
+
+	// Call service to logout
+	appErr := services.LogoutUser(request.Context(), authenticatedUser.UserID)
+	if appErr != nil {
+		errors.ErrorResponse(writer, request, appErr)
+		return
+	}
+
+	// Clear the refresh token cookie
+	http.SetCookie(writer, &http.Cookie{
+		Name:     "refresh_token",
+		Value:    "",
+		Path:     "/",
+		MaxAge:   -1, // Instruct browser to delete cookie
+		HttpOnly: true,
+		Secure:   request.URL.Scheme == "https",
+		SameSite: http.SameSiteLaxMode,
+	})
+
+	response := dto.LogoutResponse{
+		Title:   "Success",
+		Message: "You have been successfully logged out",
+	}
+
+	writer.Header().Set("Content-Type", "application/json")
+	writer.WriteHeader(http.StatusOK)
+	json.NewEncoder(writer).Encode(response)
 }

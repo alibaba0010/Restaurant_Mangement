@@ -4,17 +4,22 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/alibaba0010/postgres-api/internal/config"
 	"github.com/alibaba0010/postgres-api/internal/errors"
-	"github.com/alibaba0010/postgres-api/internal/logger"
+	"github.com/alibaba0010/postgres-api/internal/middlewares"
 	"github.com/gorilla/mux"
 	httpSwagger "github.com/swaggo/http-swagger"
 )
 
 func ApiRouter() *mux.Router {
 	route := mux.NewRouter()
-	// Add recovery middleware early so panics are caught and do not print stack traces.	
-	route.Use(errors.RecoverMiddleware)
-	route.Use(logger.Logger)
+	// Add recovery, logging, CORS and rate-limit middlewares
+	cfg := config.LoadConfig()
+	route.Use(middlewares.Recover())
+	route.Use(middlewares.RequestLogger())
+	route.Use(middlewares.CORS(cfg.FRONTEND_URL))
+	// global rate limit: 100 req/sec, burst 200 (tune as needed)
+	route.Use(middlewares.RateLimit(100, 200))
 	
 	// Serve Swagger UI at /swagger/
 	route.PathPrefix("/swagger/").Handler(httpSwagger.WrapHandler)

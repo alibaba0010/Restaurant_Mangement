@@ -1,10 +1,13 @@
 package utils
 
 import (
-	"net/http"
-	"strings"
 	"crypto/rand"
 	"encoding/hex"
+	"net/http"
+	"strings"
+	"time"
+
+	"github.com/alibaba0010/postgres-api/internal/config"
 	"github.com/google/uuid"
 )
 func GenerateUUIDv7() (uuid.UUID, error) {
@@ -40,4 +43,37 @@ func ExtractClientIP(request *http.Request) string {
 		return remote[:i]
 	}
 	return remote
+}
+
+// SetRefreshTokenCookie sets a refresh token HTTP-only cookie with proper security settings.
+// The Secure flag is automatically set to true if the frontend URL is HTTPS.
+func SetRefreshTokenCookie(writer http.ResponseWriter, refreshToken string, tokenDuration time.Duration) {
+	cfg := config.LoadConfig()
+	cookie := &http.Cookie{
+		Name:     "refresh_token",
+		Value:    refreshToken,
+		HttpOnly: true,
+		Path:     "/",
+		Expires:  time.Now().Add(tokenDuration),
+		Secure:   false,
+		SameSite: http.SameSiteLaxMode,
+	}
+	if strings.HasPrefix(cfg.FRONTEND_URL, "https") {
+		cookie.Secure = true
+	}
+	http.SetCookie(writer, cookie)
+}
+
+// ClearRefreshTokenCookie clears the refresh token cookie by setting MaxAge to -1.
+func ClearRefreshTokenCookie(writer http.ResponseWriter, isSecure bool) {
+	cookie := &http.Cookie{
+		Name:     "refresh_token",
+		Value:    "",
+		Path:     "/",
+		MaxAge:   -1,
+		HttpOnly: true,
+		Secure:   isSecure,
+		SameSite: http.SameSiteLaxMode,
+	}
+	http.SetCookie(writer, cookie)
 }

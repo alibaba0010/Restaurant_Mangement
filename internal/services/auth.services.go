@@ -286,3 +286,104 @@ func hashPassword(password string) (string, error) {
 	encoded := fmt.Sprintf("$argon2id$v=19$m=%d,t=%d,p=%d$%s$%s", memory, timeParam, threads, b64Salt, b64Hash)
 	return encoded, nil
 }
+
+
+func LogoutUser(ctx context.Context, userID string) (*errors.AppError) {
+	if userID == "" {
+		return errors.ValidationError("user id is required")
+	}
+
+	// Use a transaction to ensure atomic deletion of all tokens
+	tx, err := database.DB.BeginTx(ctx, nil)
+	if err != nil {
+		logger.Log.Error("failed to begin transaction for logout", zap.Error(err))
+		return errors.InternalError(err)
+	}
+
+	defer func() {
+		if err := tx.Rollback(); err != nil && err.Error() != "tx: already committed or rolled back" {
+			logger.Log.Error("failed to rollback logout transaction", zap.Error(err))
+		}
+	}()
+
+	// Delete all refresh tokens for the user
+	res, err := tx.NewDelete().
+		Model((*models.RefreshToken)(nil)).
+		Where("user_id = ?", userID).
+		Exec(ctx)
+
+	if err != nil {
+		logger.Log.Error("failed to delete refresh tokens", zap.Error(err), zap.String("user_id", userID))
+		return errors.InternalError(err)
+	}
+
+	// Commit the transaction
+	if err := tx.Commit(); err != nil {
+		logger.Log.Error("failed to commit logout transaction", zap.Error(err))
+		return errors.InternalError(err)
+	}
+
+	rowsAffected, _ := res.RowsAffected()
+	logger.Log.Info("user logout successful", 
+		zap.String("user_id", userID),
+		zap.Int64("tokens_revoked", rowsAffected),
+	)
+
+	return nil
+}
+
+func RefreshTokenWithRotation(ctx context.Context, refreshToken, ip, userAgent string) (*TokenPair, *errors.AppError) {
+	if refreshToken == "" {
+		return nil, errors.UnauthorizedError("refresh token missing; please login again")
+	}
+
+	// Validate refresh token signature and expiration
+	refreshClaims, appErr := ValidateRefreshToken(refreshToken)
+	if appErr != nil {
+		return nil, appErr
+	}
+
+	userID := refreshClaims.UserID
+
+	// Check if refresh token exists in database
+	exists, err := database.DB.NewSelect().Model((*models.RefreshToken)(nil)).
+		Where("user_id = ? AND token = ?", userID, refreshToken).
+		Exists(ctx)
+
+	if err != nil {
+		logger.Log.Error("failed to query refresh token from DB", zap.Error(err))
+		return nil, errors.InternalError(err)
+	}
+
+	if !exists {
+		logger.Log.Warn("refresh token not found in database", zap.String("user_id", userID))
+		return nil, errors.UnauthorizedError("user login")
+	}
+
+	// Generate new token pair with rotation
+	// This will create a new refresh token and store it in DB
+	newTokenPair, appErr := GenerateTokenPair(ctx, userID, refreshClaims.Role, ip, userAgent)
+	if appErr != nil {
+		return nil, appErr
+	}
+
+	// Invalidate old refresh token (best-effort)
+	_, err = database.DB.NewDelete().
+		Model((*models.RefreshToken)(nil)).
+		Where("user_id = ? AND token = ?", userID, refreshToken).
+		Exec(ctx)
+
+	if err != nil {
+		logger.Log.Warn("failed to invalidate old refresh token", zap.Error(err), zap.String("user_id", userID))
+		// Don't fail the request, token rotation is best-effort
+	}
+
+	return newTokenPair, nil
+}
+
+// // LogoutAllDevices is a variant that could accept device fingerprints if needed
+// // Currently logs out all devices by clearing all tokens
+// func LogoutAllDevices(ctx context.Context, userID string) (*errors.AppError) {
+// 	// Reuse the main LogoutUser function
+// 	return LogoutUser(ctx, userID)
+// }
