@@ -23,6 +23,47 @@ import (
 	"github.com/alibaba0010/postgres-api/internal/utils"
 )
 
+// Argon2 parameters centralized for readability and maintainability
+const (
+	argonTimeParam uint32 = 1
+	argonMemory    uint32 = 64 * 1024
+	argonThreads   uint8  = 4
+	argonKeyLen    uint32 = 32
+	argonSaltLen   uint32 = 16
+)
+
+// mapValidatorErrors converts go-playground/validator errors into AppError
+func mapValidatorErrors(err error) *errors.AppError {
+	if ves, ok := err.(validator.ValidationErrors); ok {
+		var messages []string
+		for _, fe := range ves {
+			field := fe.Field()
+			var msg string
+			switch fe.Tag() {
+			case "oneof":
+				msg = fmt.Sprintf("%s can only either be user, admin or management", field)
+			case "required":
+				msg = fmt.Sprintf("%s is required", field)
+			case "min":
+				msg = fmt.Sprintf("%s must be at least %s characters", field, fe.Param())
+			case "max":
+				msg = fmt.Sprintf("%s must be at most %s characters", field, fe.Param())
+			case "email":
+				msg = fmt.Sprintf("%s must be a valid email address", field)
+			case "password_special":
+				msg = "password must contain at least one uppercase letter, one lowercase letter, one digit, and one special character"
+			case "eqfield":
+				msg = fmt.Sprintf("%s must match %s", field, fe.Param())
+			default:
+				msg = fmt.Sprintf("%s is invalid", field)
+			}
+			messages = append(messages, msg)
+		}
+		return errors.ValidationErrors(messages)
+	}
+	return errors.ValidationError(err.Error())
+}
+
 // RegisterUser handles the DB work for signing up a new user.
 // It checks for an existing email, hashes the password and inserts the user.
 // Returns the created user (with ID populated) or an AppError for controller to return.
@@ -33,36 +74,7 @@ func RegisterUser(ctx context.Context, input dto.SignupInput) (*models.User, *er
 
 	// Run validation and convert errors to friendly messages
 	if err := validate.Struct(input); err != nil {
-		if ves, ok := err.(validator.ValidationErrors); ok {
-			var messages []string
-			for _, fe := range ves {
-				var msg string
-				field := fe.Field()
-				switch fe.Tag() {
-				case "oneof":
-					msg = fmt.Sprintf("%s can only either be user, admin or management", field)
-				case "required":
-					msg = fmt.Sprintf("%s is required", field)
-				case "min":
-					msg = fmt.Sprintf("%s must be at least %s characters", field, fe.Param())
-				case "max":
-					msg = fmt.Sprintf("%s must be at most %s characters", field, fe.Param())
-				case "email":
-					msg = fmt.Sprintf("%s must be a valid email address", field)
-				case "password_special":
-					msg = "password must contain at least one uppercase letter, one lowercase letter, one digit, and one special character"
-				case "eqfield":
-					// fe.Param() holds the field the current field must equal (e.g., Password)
-					msg = fmt.Sprintf("%s must match %s", field, fe.Param())
-				default:
-					msg = fmt.Sprintf("%s is invalid", field)
-				}
-				messages = append(messages, msg)
-			}
-			return nil, errors.ValidationErrors(messages)
-		}
-		// Non-validation error
-		return nil, errors.ValidationError(err.Error())
+		return nil, mapValidatorErrors(err)
 	}
 
 	// Set default role if not provided
@@ -247,16 +259,8 @@ func verifyPassword(password, hash string) bool {
 		return false
 	}
 
-	// Use same parameters as hash creation
-	var (
-		timeParam uint32 = 1
-		memory    uint32 = 64 * 1024
-		threads   uint8  = 4
-		keyLen    uint32 = 32
-	)
-
-	// Hash the provided password with the same salt
-	newHash := argon2.IDKey([]byte(password), salt, timeParam, memory, threads, keyLen)
+	// Hash the provided password with the same salt using centralized params
+	newHash := argon2.IDKey([]byte(password), salt, argonTimeParam, argonMemory, argonThreads, argonKeyLen)
 
 	// Compare hashes
 	return string(newHash) == string(originalHash)
@@ -265,25 +269,16 @@ func verifyPassword(password, hash string) bool {
 // hashPassword creates an argon2id hash of the password
 func hashPassword(password string) (string, error) {
 	// Parameters
-	var (
-		timeParam uint32 = 1
-		memory    uint32 = 64 * 1024
-		threads   uint8  = 4
-		keyLen    uint32 = 32
-		saltLen   uint32 = 16
-	)
-
-	salt := make([]byte, saltLen)
+	salt := make([]byte, argonSaltLen)
 	if _, err := rand.Read(salt); err != nil {
 		return "", err
 	}
-
-	hash := argon2.IDKey([]byte(password), salt, timeParam, memory, threads, keyLen)
+	hash := argon2.IDKey([]byte(password), salt, argonTimeParam, argonMemory, argonThreads, argonKeyLen)
 
 	b64Salt := base64.RawStdEncoding.EncodeToString(salt)
 	b64Hash := base64.RawStdEncoding.EncodeToString(hash)
 
-	encoded := fmt.Sprintf("$argon2id$v=19$m=%d,t=%d,p=%d$%s$%s", memory, timeParam, threads, b64Salt, b64Hash)
+	encoded := fmt.Sprintf("$argon2id$v=19$m=%d,t=%d,p=%d$%s$%s", argonMemory, argonTimeParam, argonThreads, b64Salt, b64Hash)
 	return encoded, nil
 }
 

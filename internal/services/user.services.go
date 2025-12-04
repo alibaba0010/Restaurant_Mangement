@@ -15,8 +15,7 @@ import (
 	"go.uber.org/zap"
 )
 
-// getUserByID is a private generic query helper using function options pattern for flexibility
-// This demonstrates advanced Go concepts: context handling, options pattern, and query building
+// getUserByID returns a user by id. Accepts optional query modifiers.
 func getUserByID(ctx context.Context, userID string, opts ...queryOption) (*models.User, *errors.AppError) {
 	q := database.DB.NewSelect().Model((*models.User)(nil)).Where("id = ?", userID)
 
@@ -35,15 +34,10 @@ func getUserByID(ctx context.Context, userID string, opts ...queryOption) (*mode
 	return user, nil
 }
 
-// queryOption is a functional option for query customization (advanced pattern)
+// queryOption is a functional option for query customization
 type queryOption func(*bun.SelectQuery) *bun.SelectQuery
 
-// withTimeout adds context timeout to query options
-func withTimeout(duration time.Duration) queryOption {
-	return func(q *bun.SelectQuery) *bun.SelectQuery {
-		return q // context timeout handled at caller level
-	}
-}
+
 
 // GetCurrentUserByID retrieves a user from the database by ID and returns formatted response
 // Uses context for cancellation and timeout support
@@ -78,29 +72,6 @@ func ValidateUserRole(roleStr string) (types.UserRole, *errors.AppError) {
 	return role, nil
 }
 
-// CheckRolePermission verifies if a user role has permission to access a required role
-// Returns true if the user's role meets or exceeds the required role
-func CheckRolePermission(userRole string, requiredRoles ...string) bool {
-	userRoleEnum, isValid := types.ToUserRole(userRole)
-	if !isValid {
-		logger.Log.Warn("invalid user role in permission check", zap.String("role", userRole))
-		return false
-	}
-
-	for _, requiredRole := range requiredRoles {
-		requiredRoleEnum, isValid := types.ToUserRole(requiredRole)
-		if !isValid {
-			logger.Log.Warn("invalid required role", zap.String("role", requiredRole))
-			continue
-		}
-
-		if userRoleEnum.HasPermission(requiredRoleEnum) {
-			return true
-		}
-	}
-
-	return false
-}
 
 // GetUserByEmail retrieves a user by email address
 func GetUserByEmail(ctx context.Context, email string) (*models.User, *errors.AppError) {
@@ -145,7 +116,7 @@ func IsUserRole(role string) bool {
 
 // UpdateUserAddress updates a user's address using a transaction-based approach
 // Demonstrates advanced patterns: explicit transaction handling, context propagation, and validation
-func UpdateUserAddress(ctx context.Context, userID string, input dto.UpdateAddressInput) (*dto.UpdateAddressResponse, *errors.AppError) {
+func UpdateUser(ctx context.Context, userID string, input dto.UpdateAddressInput) (*dto.UpdateAddressResponse, *errors.AppError) {
 	// Validate input using the validator
 	validate := validator.New()
 	if err := validate.Struct(input); err != nil {

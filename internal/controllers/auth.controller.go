@@ -12,11 +12,13 @@ import (
 	"github.com/alibaba0010/postgres-api/internal/database"
 	"github.com/alibaba0010/postgres-api/internal/dto"
 	"github.com/alibaba0010/postgres-api/internal/errors"
+	"github.com/alibaba0010/postgres-api/internal/guards"
 	"github.com/alibaba0010/postgres-api/internal/models"
 	"github.com/alibaba0010/postgres-api/internal/services"
 	"github.com/alibaba0010/postgres-api/internal/utils"
-	"github.com/alibaba0010/postgres-api/internal/guards"
 )
+
+
 
 
 func SignupHandler(writer http.ResponseWriter, request *http.Request) {
@@ -39,10 +41,11 @@ func SignupHandler(writer http.ResponseWriter, request *http.Request) {
 		"message": "Please check your email for a verification link",
 	}
 
-	writer.Header().Set("Content-Type", "application/json")
-	writer.WriteHeader(http.StatusCreated)
-	_ = json.NewEncoder(writer).Encode(resp)
+	utils.WriteJSON(writer, http.StatusCreated, resp)
+
+
 }
+
 func ActivateUserHandler(writer http.ResponseWriter, request *http.Request) {
 	token := request.URL.Query().Get("token")
 	if token == "" {
@@ -83,9 +86,7 @@ func ActivateUserHandler(writer http.ResponseWriter, request *http.Request) {
 			RefreshToken: tokens.RefreshToken,
 		},
 	}
-	writer.Header().Set("Content-Type", "application/json")
-	writer.WriteHeader(http.StatusOK)
-	_ = json.NewEncoder(writer).Encode(resp)
+	utils.WriteJSON(writer, http.StatusOK, resp)
 }
 
 func SigninHandler(writer http.ResponseWriter, request *http.Request) {
@@ -143,10 +144,8 @@ func SigninHandler(writer http.ResponseWriter, request *http.Request) {
 			RefreshToken: tokens.RefreshToken,
 		},
 	}
+	utils.WriteJSON(writer, http.StatusOK, resp)
 
-	writer.Header().Set("Content-Type", "application/json")
-	writer.WriteHeader(http.StatusOK)
-	_ = json.NewEncoder(writer).Encode(resp)
 }
 
 func ResendVerificationHandler(writer http.ResponseWriter, request *http.Request) {
@@ -219,9 +218,7 @@ func ResendVerificationHandler(writer http.ResponseWriter, request *http.Request
 		return
 	}
 
-	writer.Header().Set("Content-Type", "application/json")
-	writer.WriteHeader(http.StatusOK)
-	_ = json.NewEncoder(writer).Encode(map[string]string{"message": "Verification email resent"})
+	utils.WriteJSON(writer, http.StatusOK, map[string]string{"message": "Verification email resent"})
 }
 
 // RefreshTokenHandler handles token refresh using the refresh token cookie.
@@ -260,9 +257,7 @@ func RefreshTokenHandler(writer http.ResponseWriter, request *http.Request) {
 		"access_token": newTokenPair.AccessToken,
 	}
 
-	writer.Header().Set("Content-Type", "application/json")
-	writer.WriteHeader(http.StatusOK)
-	_ = json.NewEncoder(writer).Encode(resp)
+	utils.WriteJSON(writer, http.StatusOK, resp)
 }
 
 // LogoutHandler logs out the current user by revoking all their refresh tokens
@@ -296,7 +291,6 @@ func LogoutHandler(writer http.ResponseWriter, request *http.Request) {
 		Message: "You have been successfully logged out",
 	}
 
-	writer.Header().Set("Content-Type", "application/json")
-	writer.WriteHeader(http.StatusOK)
-	json.NewEncoder(writer).Encode(response)
+	utils.WriteJSON(writer, http.StatusOK, response)
+
 }

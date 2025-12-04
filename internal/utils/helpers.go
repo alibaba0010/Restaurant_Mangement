@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 	"time"
+	"encoding/json"
 
 	"github.com/alibaba0010/postgres-api/internal/config"
 	"github.com/google/uuid"
@@ -76,4 +77,11 @@ func ClearRefreshTokenCookie(writer http.ResponseWriter, isSecure bool) {
 		SameSite: http.SameSiteLaxMode,
 	}
 	http.SetCookie(writer, cookie)
+}
+// writeJSON writes a JSON response with the provided status code.
+// Keeps handlers compact and consistent.
+func WriteJSON(w http.ResponseWriter, status int, v interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(v)
 }

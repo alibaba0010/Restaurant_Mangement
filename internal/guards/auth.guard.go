@@ -10,6 +10,7 @@ import (
 	"github.com/alibaba0010/postgres-api/internal/errors"
 	"github.com/alibaba0010/postgres-api/internal/logger"
 	"github.com/alibaba0010/postgres-api/internal/services"
+	"github.com/alibaba0010/postgres-api/internal/types"
 )
 
 // ContextKey is a custom type for context keys to avoid collisions
@@ -26,59 +27,46 @@ type AuthenticatedUser struct {
 	Role   string
 }
 
-// AuthMiddleware validates the access token from Authorization header (Bearer scheme).
-// If expired, returns 401 with "access token is expired" message.
-// If invalid, returns 401 with "access token is invalid" message.
-// Sets context "user_claims" for downstream handlers.
+// AuthMiddleware validates access token from Authorization header.
+// On success: stores claims in context (UserClaimsKey)
+// On fail: returns 401 with specific error (expired vs invalid)
 func AuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		// Extract access token from Authorization header
 		authHeader := request.Header.Get("Authorization")
 		if authHeader == "" {
 			errors.ErrorResponse(writer, request, errors.UnauthorizedError("authorization header required"))
 			return
 		}
 
-		// Expect "Bearer <token>"
 		parts := strings.SplitN(authHeader, " ", 2)
 		if len(parts) != 2 || parts[0] != "Bearer" {
 			errors.ErrorResponse(writer, request, errors.UnauthorizedError("invalid authorization header format"))
 			return
 		}
 
-		accessToken := parts[1]
-
-		// Try to verify access token
-		claims, appErr := services.VerifyAccessToken(accessToken)
+		claims, appErr := services.VerifyAccessToken(parts[1])
 		if appErr == nil {
-			// Access token is valid, proceed
 			ctx := context.WithValue(request.Context(), UserClaimsKey, claims)
 			next.ServeHTTP(writer, request.WithContext(ctx))
 			return
 		}
 
-		// Access token is invalid or expired
-		// Client should call POST /auth/refresh to get a new access token
 		errors.ErrorResponse(writer, request, appErr)
 	})
 }
 
-// ExtractAuthenticatedUser extracts authenticated user info from request headers
-// (set by AuthMiddleware).
+// ExtractAuthenticatedUser extracts user claims from context (set by AuthMiddleware)
 func ExtractAuthenticatedUser(request *http.Request) *AuthenticatedUser {
-	userID := request.Header.Get("X-User-Id")
-	role := request.Header.Get("X-User-Role")
-	if userID == "" {
-		return nil
+	if v := request.Context().Value(UserClaimsKey); v != nil {
+		if claims, ok := v.(*services.AccessTokenClaims); ok && claims != nil {
+			return &AuthenticatedUser{UserID: claims.UserID, Role: claims.Role}
+		}
 	}
-	return &AuthenticatedUser{
-		UserID: userID,
-		Role:   role,
-	}
+	return nil
 }
 
 
-
+// RequireRole enforces role-based access control using role hierarchy (admin > management > user)
 func RequireRole(allowedRoles ...string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
@@ -88,11 +76,10 @@ func RequireRole(allowedRoles ...string) func(http.Handler) http.Handler {
 				return
 			}
 
-			// Check if user's role has permission for any of the allowed roles
-			if !services.CheckRolePermission(user.Role, allowedRoles...) {
-				logger.Log.Warn("unauthorized access attempt", 
-					zap.String("user_id", user.UserID), 
-					zap.String("user_role", user.Role), 
+			if !CheckRolePermission(user.Role, allowedRoles...) {
+				logger.Log.Warn("unauthorized access attempt",
+					zap.String("user_id", user.UserID),
+					zap.String("user_role", user.Role),
 					zap.Strings("required_roles", allowedRoles))
 				errors.ErrorResponse(writer, request, errors.ForbiddenError("insufficient permissions for this resource"))
 				return
@@ -105,3 +92,19 @@ func RequireRole(allowedRoles ...string) func(http.Handler) http.Handler {
 }
 
 
+// CheckRolePermission checks if userRole has permission for any of requiredRoles
+// Uses role hierarchy: admin > management > user
+func CheckRolePermission(userRole string, requiredRoles ...string) bool {
+	userRoleEnum, isValid := types.ToUserRole(userRole)
+	if !isValid {
+		logger.Log.Warn("invalid user role", zap.String("role", userRole))
+		return false
+	}
+
+	for _, requiredRole := range requiredRoles {
+		if requiredRoleEnum, ok := types.ToUserRole(requiredRole); ok && userRoleEnum.HasPermission(requiredRoleEnum) {
+			return true
+		}
+	}
+	return false
+}
