@@ -14,12 +14,12 @@ import (
 	"go.uber.org/zap"
 	"golang.org/x/crypto/argon2"
 
+	"github.com/alibaba0010/postgres-api/internal/auth/dto"
+	"github.com/alibaba0010/postgres-api/internal/auth/models"
+	"github.com/alibaba0010/postgres-api/internal/common/errors"
+	"github.com/alibaba0010/postgres-api/internal/common/logger"
 	"github.com/alibaba0010/postgres-api/internal/config"
 	"github.com/alibaba0010/postgres-api/internal/database"
-	"github.com/alibaba0010/postgres-api/internal/dto"
-	"github.com/alibaba0010/postgres-api/internal/errors"
-	"github.com/alibaba0010/postgres-api/internal/logger"
-	"github.com/alibaba0010/postgres-api/internal/models"
 	"github.com/alibaba0010/postgres-api/internal/utils"
 )
 

@@ -7,8 +7,8 @@ import (
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 
+	"github.com/alibaba0010/postgres-api/internal/common/logger"
 	"github.com/alibaba0010/postgres-api/internal/config"
-	"github.com/alibaba0010/postgres-api/internal/logger"
 )
 
 var RedisClient *redis.Client

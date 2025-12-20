@@ -8,13 +8,13 @@ import (
 
 	"github.com/go-playground/validator/v10"
 
+	"github.com/alibaba0010/postgres-api/internal/auth/dto"
+	"github.com/alibaba0010/postgres-api/internal/auth/models"
+	"github.com/alibaba0010/postgres-api/internal/auth/services"
+	"github.com/alibaba0010/postgres-api/internal/common/errors"
+	"github.com/alibaba0010/postgres-api/internal/common/guards"
 	"github.com/alibaba0010/postgres-api/internal/config"
 	"github.com/alibaba0010/postgres-api/internal/database"
-	"github.com/alibaba0010/postgres-api/internal/dto"
-	"github.com/alibaba0010/postgres-api/internal/errors"
-	"github.com/alibaba0010/postgres-api/internal/guards"
-	"github.com/alibaba0010/postgres-api/internal/models"
-	"github.com/alibaba0010/postgres-api/internal/services"
 	"github.com/alibaba0010/postgres-api/internal/utils"
 )
 

@@ -9,7 +9,7 @@ import (
 	"github.com/uptrace/bun"
 	"go.uber.org/zap"
 
-	"github.com/alibaba0010/postgres-api/internal/logger"
+	"github.com/alibaba0010/postgres-api/internal/common/logger"
 )
 
 // PrettyQueryHook is a Bun query hook that formats SQL queries and logs them

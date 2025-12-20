@@ -5,10 +5,10 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/alibaba0010/postgres-api/internal/dto"
-	"github.com/alibaba0010/postgres-api/internal/errors"
-	"github.com/alibaba0010/postgres-api/internal/guards"
-	"github.com/alibaba0010/postgres-api/internal/services"
+	"github.com/alibaba0010/postgres-api/internal/auth/dto"
+	"github.com/alibaba0010/postgres-api/internal/auth/services"
+	"github.com/alibaba0010/postgres-api/internal/common/errors"
+	"github.com/alibaba0010/postgres-api/internal/common/guards"
 	"github.com/alibaba0010/postgres-api/internal/utils"
 
 	"github.com/gorilla/mux"

@@ -5,19 +5,19 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/alibaba0010/postgres-api/internal/errors"
-	"github.com/alibaba0010/postgres-api/internal/logger"
+	"github.com/alibaba0010/postgres-api/internal/common/errors"
+	"github.com/alibaba0010/postgres-api/internal/common/logger"
 	"go.uber.org/zap"
 )
 
 // Recover returns the existing recover middleware from errors package
 func Recover() func(http.Handler) http.Handler {
-    return errors.RecoverMiddleware
+	return errors.RecoverMiddleware
 }
 
 // RequestLogger returns the existing request logger middleware
 func RequestLogger() func(http.Handler) http.Handler {
-    return logger.Logger
+	return logger.Logger
 }
 
 // CORS returns a middleware that sets common CORS headers and handles preflight.

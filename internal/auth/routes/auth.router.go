@@ -1,7 +1,7 @@
 package routes
 
 import (
-	"github.com/alibaba0010/postgres-api/internal/controllers"
+	"github.com/alibaba0010/postgres-api/internal/auth/controllers"
 	"github.com/gorilla/mux"
 )
 

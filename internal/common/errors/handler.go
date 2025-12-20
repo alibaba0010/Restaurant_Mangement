@@ -5,12 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+
 	// "runtime/debug"
 	"strings"
 
 	"go.uber.org/zap"
 
-	"github.com/alibaba0010/postgres-api/internal/logger"
+	"github.com/alibaba0010/postgres-api/internal/common/logger"
 	"github.com/jackc/pgconn"
 )
 

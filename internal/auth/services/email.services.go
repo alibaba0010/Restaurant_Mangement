@@ -8,8 +8,8 @@ import (
 	"github.com/wneessen/go-mail"
 	"go.uber.org/zap"
 
+	"github.com/alibaba0010/postgres-api/internal/common/logger"
 	"github.com/alibaba0010/postgres-api/internal/config"
-	"github.com/alibaba0010/postgres-api/internal/logger"
 )
 
 // SendHTMLEmail sends an HTML email to the specified recipient using SMTP

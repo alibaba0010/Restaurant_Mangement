@@ -7,10 +7,10 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/alibaba0010/postgres-api/internal/errors"
-	"github.com/alibaba0010/postgres-api/internal/logger"
-	"github.com/alibaba0010/postgres-api/internal/services"
-	"github.com/alibaba0010/postgres-api/internal/types"
+	"github.com/alibaba0010/postgres-api/internal/auth/services"
+	"github.com/alibaba0010/postgres-api/internal/common/errors"
+	"github.com/alibaba0010/postgres-api/internal/common/logger"
+	"github.com/alibaba0010/postgres-api/internal/common/types"
 )
 
 // ContextKey is a custom type for context keys to avoid collisions

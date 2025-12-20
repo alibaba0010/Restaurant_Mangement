@@ -7,8 +7,8 @@ import (
 	"os"
 	"strings"
 
+	"github.com/alibaba0010/postgres-api/internal/common/logger"
 	postgres "github.com/alibaba0010/postgres-api/internal/database"
-	"github.com/alibaba0010/postgres-api/internal/logger"
 	"github.com/alibaba0010/postgres-api/internal/migration"
 	"github.com/uptrace/bun/extra/bundebug"
 	"github.com/uptrace/bun/migrate"
