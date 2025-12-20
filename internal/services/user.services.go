@@ -2,6 +2,8 @@ package services
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"time"
 
 	"github.com/alibaba0010/postgres-api/internal/database"
@@ -60,6 +62,78 @@ func GetCurrentUserByID(ctx context.Context, userID string) (*dto.CurrentUserRes
 
 	logger.Log.Debug("user retrieved from database", zap.String("user_id", userID), zap.String("role", user.Role))
 	return response, nil
+}
+
+// GetAllUsers returns a paginated, filtered and sorted list of users.
+// Supports search by name/email (`q`), role filter, and sorting by allowed columns.
+func GetAllUsers(ctx context.Context, page, pageSize int, qStr, role, sortBy, order string) ([]dto.CurrentUserResponse, int64, *errors.AppError) {
+	if page <= 0 {
+		page = 1
+	}
+	if pageSize <= 0 || pageSize > 100 {
+		pageSize = 20
+	}
+
+	// Build base query with optional filters
+	users := make([]models.User, 0)
+	sel := database.DB.NewSelect().Model(&users)
+
+	if qStr != "" {
+		like := "%" + qStr + "%"
+		sel = sel.Where("name ILIKE ? OR email ILIKE ?", like, like)
+	}
+	if role != "" {
+		sel = sel.Where("role = ?", role)
+	}
+
+	// Count total matching rows (separate query)
+	countSel := database.DB.NewSelect().Model((*models.User)(nil))
+	if qStr != "" {
+		like := "%" + qStr + "%"
+		countSel = countSel.Where("name ILIKE ? OR email ILIKE ?", like, like)
+	}
+	if role != "" {
+		countSel = countSel.Where("role = ?", role)
+	}
+	total, err := countSel.Count(ctx)
+	if err != nil {
+		logger.Log.Error("failed to count users", zap.Error(err))
+		return nil, 0, errors.InternalError(err)
+	}
+
+	// Sorting
+	allowedSort := map[string]bool{"name": true, "email": true, "created_at": true}
+	if !allowedSort[sortBy] {
+		sortBy = "created_at"
+	}
+	if strings.ToLower(order) != "asc" {
+		order = "DESC"
+	} else {
+		order = "ASC"
+	}
+
+	sel = sel.Order(fmt.Sprintf("%s %s", sortBy, order)).Limit(pageSize).Offset((page - 1) * pageSize)
+
+	if err := sel.Scan(ctx); err != nil {
+		logger.Log.Error("failed to fetch users", zap.Error(err))
+		return nil, 0, errors.InternalError(err)
+	}
+
+	// Map to DTO
+	result := make([]dto.CurrentUserResponse, 0, len(users))
+	for _, u := range users {
+		result = append(result, dto.CurrentUserResponse{
+			ID:        u.ID,
+			Name:      u.Name,
+			Email:     u.Email,
+			Address:   u.Address,
+			Role:      u.Role,
+			CreatedAt: u.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+			UpdatedAt: u.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		})
+	}
+
+	return result, int64(total), nil
 }
 
 // ValidateUserRole checks if a user role is valid

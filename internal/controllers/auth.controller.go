@@ -36,9 +36,9 @@ func SignupHandler(writer http.ResponseWriter, request *http.Request) {
 		return
 	}
 	// Per new flow we don't persist the user at signup; activation will.
-	resp := map[string]string{
-		"title":   "Successfully signed up",
-		"message": "Please check your email for a verification link",
+	resp := dto.MessageResponse{
+		Title:   "Successfully signed up",
+		Message: "Please check your email for a verification link",
 	}
 
 	utils.WriteJSON(writer, http.StatusCreated, resp)
@@ -149,9 +149,7 @@ func SigninHandler(writer http.ResponseWriter, request *http.Request) {
 }
 
 func ResendVerificationHandler(writer http.ResponseWriter, request *http.Request) {
-	var body struct{
-		Email string `json:"email"`
-	}
+	var body dto.ResendVerificationInput
 	if err := json.NewDecoder(request.Body).Decode(&body); err != nil {
 		errors.ErrorResponse(writer, request, errors.ValidationError("Invalid JSON body"))
 		return
@@ -218,7 +216,7 @@ func ResendVerificationHandler(writer http.ResponseWriter, request *http.Request
 		return
 	}
 
-	utils.WriteJSON(writer, http.StatusOK, map[string]string{"message": "Verification email resent"})
+	utils.WriteJSON(writer, http.StatusOK, dto.MessageResponse{Title: "Success", Message: "Verification email resent"})
 }
 
 // RefreshTokenHandler handles token refresh using the refresh token cookie.
@@ -253,11 +251,7 @@ func RefreshTokenHandler(writer http.ResponseWriter, request *http.Request) {
 	utils.SetRefreshTokenCookie(writer, newTokenPair.RefreshToken, services.RefreshTokenDuration)
 
 	// Return new access token
-	resp := map[string]string{
-		"access_token": newTokenPair.AccessToken,
-	}
-
-	utils.WriteJSON(writer, http.StatusOK, resp)
+	utils.WriteJSON(writer, http.StatusOK, dto.AccessTokenResponse{AccessToken: newTokenPair.AccessToken})
 }
 
 // LogoutHandler logs out the current user by revoking all their refresh tokens

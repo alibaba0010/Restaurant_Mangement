@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/alibaba0010/postgres-api/internal/config"
+	"github.com/alibaba0010/postgres-api/internal/dto"
 	"github.com/alibaba0010/postgres-api/internal/errors"
 	"github.com/alibaba0010/postgres-api/internal/middlewares"
 	"github.com/gorilla/mux"
@@ -43,10 +44,7 @@ v1.HandleFunc("/healthcheck", HealthCheckHandler).Methods("GET")
 // HealthCheckHandler returns a simple health status for the API
 func HealthCheckHandler(writer http.ResponseWriter, request *http.Request) {
 	writer.Header().Set("Content-Type", "application/json")
-	resp := map[string]string{
-		"title":   "Success",
-		"message": "API is healthy and running",
-	}
+	resp := dto.MessageResponse{Title: "Success", Message: "API is healthy and running"}
 	if err := json.NewEncoder(writer).Encode(resp); err != nil {
 		http.Error(writer, err.Error(), http.StatusInternalServerError)
 		return

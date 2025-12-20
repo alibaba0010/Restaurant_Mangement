@@ -19,4 +19,10 @@ func UserRoutes(route *mux.Router) {
 	// Admin only
 	userRouter.Use(guards.RequireRole("admin"))
 	userRouter.HandleFunc("/{id}", controllers.GetUserByIDHandler).Methods("GET")
+
+	// Admin-only users listing (GET /users)
+	adminListRouter := route.PathPrefix("/users").Subrouter()
+	adminListRouter.Use(guards.AuthMiddleware)
+	adminListRouter.Use(guards.RequireRole("admin"))
+	adminListRouter.HandleFunc("", controllers.GetAllUsersHandler).Methods("GET")
 }

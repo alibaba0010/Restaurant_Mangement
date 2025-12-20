@@ -3,6 +3,7 @@ package controllers
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 
 	"github.com/alibaba0010/postgres-api/internal/dto"
 	"github.com/alibaba0010/postgres-api/internal/errors"
@@ -71,5 +72,54 @@ func UpdateUserHandler(writer http.ResponseWriter, request *http.Request) {
 
 	utils.WriteJSON(writer, http.StatusOK, response)
 
+}
+
+// GetAllUsersHandler returns a paginated list of users (admin only)
+func GetAllUsersHandler(writer http.ResponseWriter, request *http.Request) {
+	// parse query params
+	q := request.URL.Query()
+
+	page := 1
+	if p := q.Get("page"); p != "" {
+		if v, err := strconv.Atoi(p); err == nil && v > 0 {
+			page = v
+		}
+	}
+
+	pageSize := 20
+	if ps := q.Get("page_size"); ps != "" {
+		if v, err := strconv.Atoi(ps); err == nil && v > 0 {
+			pageSize = v
+		}
+	}
+
+	search := q.Get("q")
+	role := q.Get("role")
+	sortBy := q.Get("sort_by")
+	order := q.Get("order")
+
+	users, total, appErr := services.GetAllUsers(request.Context(), page, pageSize, search, role, sortBy, order)
+	if appErr != nil {
+		errors.ErrorResponse(writer, request, appErr)
+		return
+	}
+
+	totalPages := 0
+	if pageSize > 0 {
+		totalPages = int((total + int64(pageSize) - 1) / int64(pageSize))
+	}
+
+	resp := dto.UsersListResponse{
+		Title: "Success",
+		Data:  users,
+		Meta: dto.PaginationMeta{
+			Page:       page,
+			PageSize:   pageSize,
+			Total:      total,
+			TotalPages: totalPages,
+		},
+	}
+
+	utils.WriteJSON(writer, http.StatusOK, resp)
 }
 

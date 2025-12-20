@@ -62,4 +62,28 @@ const usersPaths = `
 			}
 		}
 	},
+
+	"/users": {
+		"get": {
+			"tags": ["Users"],
+			"summary": "Get all users",
+			"description": "Returns a paginated list of users (admin role required)",
+			"operationId": "listUsers",
+			"security": [ { "Bearer": [] } ],
+			"parameters": [
+				{"name":"page","in":"query","type":"integer"},
+				{"name":"page_size","in":"query","type":"integer"},
+				{"name":"q","in":"query","type":"string","description":"search name/email"},
+				{"name":"role","in":"query","type":"string"},
+				{"name":"sort_by","in":"query","type":"string"},
+				{"name":"order","in":"query","type":"string","enum":["asc","desc"]}
+			],
+			"responses": {
+				"200": {"description":"Successful operation","schema":{"$ref":"#/definitions/UsersListResponse"}},
+				"401": {"description":"Unauthorized","schema":{"$ref":"#/definitions/Error"}},
+				"403": {"description":"Forbidden - requires admin role","schema":{"$ref":"#/definitions/Error"}},
+				"500": {"description":"Internal server error","schema":{"$ref":"#/definitions/Error"}}
+			}
+		}
+	},
 `
