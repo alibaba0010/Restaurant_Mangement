@@ -59,6 +59,12 @@ func ExtractClientIP(request *http.Request) string {
 	return remote
 }
 
+// SetAuthCookies sets both access and refresh token cookies.
+func SetAuthCookies(writer http.ResponseWriter, accessToken, refreshToken string, accessDuration, refreshDuration time.Duration) {
+	SetAccessTokenCookie(writer, accessToken, accessDuration)
+	SetRefreshTokenCookie(writer, refreshToken, refreshDuration)
+}
+
 // SetRefreshTokenCookie sets a refresh token HTTP-only cookie with proper security settings.
 // The Secure flag is automatically set to true if the frontend URL is HTTPS.
 func SetRefreshTokenCookie(writer http.ResponseWriter, refreshToken string, tokenDuration time.Duration) {

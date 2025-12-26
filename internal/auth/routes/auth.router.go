@@ -13,4 +13,5 @@ func AuthRoutes(route *mux.Router) {
 	route.HandleFunc("/signin", controllers.SigninHandler).Methods("POST")
 	route.HandleFunc("/refresh", controllers.RefreshTokenHandler).Methods("POST")
 	route.HandleFunc("/{provider}/login", controllers.InitiateOAuthHandler).Methods("GET")
+	route.HandleFunc("/{provider}/verify", controllers.VerifyOAuthHandler).Methods("POST")
 }

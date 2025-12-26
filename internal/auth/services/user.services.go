@@ -16,6 +16,22 @@ import (
 	"go.uber.org/zap"
 )
 
+// mapToCurrentUserResponse converts a user model to a current user DTO
+func mapToCurrentUserResponse(user *models.User) dto.CurrentUserResponse {
+	return dto.CurrentUserResponse{
+		ID:          user.ID,
+		Name:        user.Name,
+		Email:       user.Email,
+		Address:     user.Address,
+		Role:        user.Role,
+		Status:      user.Status,
+		AvatarURL:   user.AvatarURL,
+		PhoneNumber: user.PhoneNumber,
+		CreatedAt:   user.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		UpdatedAt:   user.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
+	}
+}
+
 // getUserByID returns a user by id using repository
 func getUserByID(ctx context.Context, userID string) (*models.User, *errors.AppError) {
 	user, err := repositories.UserRepo.FindByID(ctx, userID)
@@ -37,21 +53,9 @@ func GetCurrentUserByID(ctx context.Context, userID string) (*dto.CurrentUserRes
 		return nil, appErr
 	}
 
-	response := &dto.CurrentUserResponse{
-		ID:        user.ID,
-		Name:      user.Name,
-		Email:     user.Email,
-		Address:   user.Address,
-		Role:      user.Role,
-		Status:    user.Status,
-		AvatarURL: user.AvatarURL,
-		PhoneNumber: user.PhoneNumber,
-		CreatedAt: user.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
-		UpdatedAt: user.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
-	}
-
+	response := mapToCurrentUserResponse(user)
 	logger.Log.Debug("user retrieved from database", zap.String("user_id", userID), zap.String("role", user.Role))
-	return response, nil
+	return &response, nil
 }
 
 // GetAllUsers returns a paginated, filtered and sorted list of users.
@@ -84,18 +88,7 @@ func GetAllUsers(ctx context.Context, page, pageSize int, qStr, role, sortBy, or
 	// Map to DTO
 	result := make([]dto.CurrentUserResponse, 0, len(users))
 	for _, u := range users {
-		result = append(result, dto.CurrentUserResponse{
-			ID:        u.ID,
-			Name:      u.Name,
-			Email:     u.Email,
-			Address:   u.Address,
-			Role:      u.Role,
-			Status:    u.Status,
-			AvatarURL: u.AvatarURL,
-			PhoneNumber: u.PhoneNumber,
-			CreatedAt: u.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
-			UpdatedAt: u.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
-		})
+		result = append(result, mapToCurrentUserResponse(&u))
 	}
 
 	return result, total, nil
@@ -227,31 +220,7 @@ func UpdateUser(ctx context.Context, userID string, input dto.UpdateAddressInput
 	return response, nil
 }
 
-// GetUserByIDPublic retrieves public user information by ID (no password/sensitive data)
-// Uses channel-based cancellation pattern for timeout support
+// GetUserByIDPublic retrieves public user information by ID
 func GetUserByIDPublic(ctx context.Context, userID string) (*models.User, *errors.AppError) {
-	done := make(chan *models.User)
-	errChan := make(chan error)
-
-	// Query in a separate goroutine to support cancellation
-	go func() {
-		user, appErr := getUserByID(ctx, userID)
-		if appErr != nil {
-			errChan <- appErr
-			return
-		}
-		done <- user
-	}()
-
-	select {
-	case user := <-done:
-		return user, nil
-	case err := <-errChan:
-		if appErr, ok := err.(*errors.AppError); ok {
-			return nil, appErr
-		}
-		return nil, errors.InternalError(err)
-	case <-ctx.Done():
-		return nil, errors.InternalError(ctx.Err())
-	}
+	return getUserByID(ctx, userID)
 }

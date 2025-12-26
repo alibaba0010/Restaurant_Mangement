@@ -9,16 +9,34 @@ import (
 
 	"github.com/go-playground/validator/v10"
 	"github.com/gorilla/mux"
+	"go.uber.org/zap"
 
 	"github.com/alibaba0010/postgres-api/internal/auth/dto"
 	"github.com/alibaba0010/postgres-api/internal/auth/models"
 	"github.com/alibaba0010/postgres-api/internal/auth/services"
 	"github.com/alibaba0010/postgres-api/internal/common/errors"
 	"github.com/alibaba0010/postgres-api/internal/common/guards"
+	"github.com/alibaba0010/postgres-api/internal/common/logger"
 	"github.com/alibaba0010/postgres-api/internal/config"
 	"github.com/alibaba0010/postgres-api/internal/database"
 	"github.com/alibaba0010/postgres-api/internal/utils"
 )
+
+// sendAuthResponse is a helper to centralize setting cookies and writing the final success response.
+func sendAuthResponse(writer http.ResponseWriter, user *models.User, tokens *services.TokenPair, title string) {
+	utils.SetAuthCookies(writer, tokens.AccessToken, tokens.RefreshToken, services.AccessTokenDuration, services.RefreshTokenDuration)
+
+	resp := dto.SigninResponse{
+		Title: title,
+		Data: dto.SigninData{
+			ID:    user.ID,
+			Name:  user.Name,
+			Email: user.Email,
+			Role:  user.Role,
+		},
+	}
+	utils.WriteJSON(writer, http.StatusOK, resp)
+}
 
 
 
@@ -61,32 +79,17 @@ func ActivateUserHandler(writer http.ResponseWriter, request *http.Request) {
 		return
 	}
 
-	// generate token pair and set refresh token cookie
-	// extract IP and user-agent
-	ip:= utils.ExtractClientIP(request)
+	// Generate tokens
+	ip := utils.ExtractClientIP(request)
 	ua := request.Header.Get("User-Agent")
-
 	tokens, appErr := services.GenerateTokenPair(request.Context(), user.ID, user.Role, ip, ua)
 	if appErr != nil {
 		errors.ErrorResponse(writer, request, appErr)
 		return
 	}
 
-	// set refresh token cookie
-	utils.SetAccessTokenCookie(writer, tokens.AccessToken, services.AccessTokenDuration)
-	utils.SetRefreshTokenCookie(writer, tokens.RefreshToken, services.RefreshTokenDuration)
-
-	// Return created user (omit password) + tokens
-	resp := dto.SignUpResponse{
-		Title: "User activated successfully",
-		Data: dto.SignUpData{
-			ID:           user.ID,
-			Name:         user.Name,
-			Email:        user.Email,
-			Role:         user.Role,		
-		},
-	}
-	utils.WriteJSON(writer, http.StatusOK, resp)
+	// set cookies and return response
+	sendAuthResponse(writer, user, tokens, "User activated successfully")
 }
 
 func SigninHandler(writer http.ResponseWriter, request *http.Request) {
@@ -126,24 +129,8 @@ func SigninHandler(writer http.ResponseWriter, request *http.Request) {
 		errors.ErrorResponse(writer, request, appErr)
 		return
 	}
-	
-
-	// Set refresh token cookie
-	utils.SetAccessTokenCookie(writer, tokens.AccessToken, services.AccessTokenDuration)
-	utils.SetRefreshTokenCookie(writer, tokens.RefreshToken, services.RefreshTokenDuration)
-
-	// Return response
-	resp := dto.SigninResponse{
-		Title: "Signin successful",
-		Data: dto.SigninData{
-			ID:           user.ID,
-			Name:         user.Name,
-			Email:        user.Email,
-			Role:         user.Role,		
-		},
-	}
-	utils.WriteJSON(writer, http.StatusOK, resp)
-
+	// set cookies and return response
+	sendAuthResponse(writer, user, tokens, "Signin successful")
 }
 
 func ResendVerificationHandler(writer http.ResponseWriter, request *http.Request) {
@@ -223,6 +210,7 @@ func ResendVerificationHandler(writer http.ResponseWriter, request *http.Request
 func RefreshTokenHandler(writer http.ResponseWriter, request *http.Request) {
 	// Extract refresh token from cookie
 	refreshCookie, err := request.Cookie("refresh_token")
+	logger.Log.Info("Refresh token: ", zap.String("refresh_token", refreshCookie.Value))
 	if err != nil {
 		errors.ErrorResponse(writer, request, errors.UnauthorizedError("refresh token missing; please login again"))
 		return
@@ -245,10 +233,10 @@ func RefreshTokenHandler(writer http.ResponseWriter, request *http.Request) {
 		return
 	}
 
-	// Set new refresh token cookie
-	utils.SetRefreshTokenCookie(writer, newTokenPair.RefreshToken, services.RefreshTokenDuration)
+	// Set new cookies
+	utils.SetAuthCookies(writer, newTokenPair.AccessToken, newTokenPair.RefreshToken, services.AccessTokenDuration, services.RefreshTokenDuration)
 
-	// Return new access token
+	// Return new access token in body (optional if frontend uses cookies, but kept for compatibility)
 	utils.WriteJSON(writer, http.StatusOK, dto.AccessTokenResponse{AccessToken: newTokenPair.AccessToken})
 }
 
@@ -267,29 +255,16 @@ func LogoutHandler(writer http.ResponseWriter, request *http.Request) {
 		return
 	}
 
-	// Clear the refresh token cookie
-	http.SetCookie(writer, &http.Cookie{
-		Name:     "refresh_token",
-		Value:    "",
-		Path:     "/",
-		MaxAge:   -1, // Instruct browser to delete cookie
-		HttpOnly: true,
-		Secure:   request.URL.Scheme == "https",
-		SameSite: http.SameSiteLaxMode,
-	})
-	
 	utils.ClearAccessTokenCookie(writer, request.URL.Scheme == "https")
+	utils.ClearRefreshTokenCookie(writer, request.URL.Scheme == "https")
 
-	response := dto.LogoutResponse{
+	utils.WriteJSON(writer, http.StatusOK, dto.LogoutResponse{
 		Title:   "Success",
 		Message: "You have been successfully logged out",
-	}
-
-	utils.WriteJSON(writer, http.StatusOK, response)
-
+	})
 }
 
-// InitiateOAuthHandler starts the OAuth flow by generating a state and setting it in a cookie.
+// InitiateOAuthHandler starts the OAuth flow
 func InitiateOAuthHandler(writer http.ResponseWriter, request *http.Request) {
 	vars := mux.Vars(request)
 	provider := vars["provider"]
@@ -308,7 +283,7 @@ func InitiateOAuthHandler(writer http.ResponseWriter, request *http.Request) {
 		Value:    state,
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   false, 
+		Secure:   false,
 		SameSite: http.SameSiteLaxMode,
 		Expires:  time.Now().Add(15 * time.Minute),
 	}
@@ -317,10 +292,82 @@ func InitiateOAuthHandler(writer http.ResponseWriter, request *http.Request) {
 	}
 	http.SetCookie(writer, cookie)
 
-	// 3. For now, we return the state and provider as a mock response.
-	// In a real implementation with known providers, we would construct the Redirect URL here.
-	utils.WriteJSON(writer, http.StatusOK, dto.MessageResponse{
-		Title:   "OAuth Initiated",
-		Message: fmt.Sprintf("Provider: %s. State set in cookie.", provider),
+	// 3. Get Auth URL
+	var authURL string
+	switch provider {
+	case "google":
+		authURL = services.GetGoogleAuthURL(state)
+	case "facebook":
+		authURL = services.GetFacebookAuthURL(state)
+	default:
+		errors.ErrorResponse(writer, request, errors.ValidationError("unsupported provider"))
+		return
+	}
+
+	utils.WriteJSON(writer, http.StatusOK, dto.OAuthLoginResponse{
+		URL: authURL,
 	})
+}
+
+// VerifyOAuthHandler handles the callback verification from frontend (code & state)
+func VerifyOAuthHandler(writer http.ResponseWriter, request *http.Request) {
+	vars := mux.Vars(request)
+	provider := vars["provider"]
+
+	var input dto.VerifyOAuthInput
+	if err := json.NewDecoder(request.Body).Decode(&input); err != nil {
+		errors.ErrorResponse(writer, request, errors.ValidationError("Invalid JSON body"))
+		return
+	}
+
+	// 1. Validate State
+	cookie, err := request.Cookie("oauth_state")
+	if err != nil || cookie.Value == "" {
+		errors.ErrorResponse(writer, request, errors.ForbiddenError("missing or invalid state cookie"))
+		return
+	}
+	if input.State != cookie.Value {
+		errors.ErrorResponse(writer, request, errors.ForbiddenError("state mismatch"))
+		return
+	}
+
+	// Clear state cookie
+	http.SetCookie(writer, &http.Cookie{
+		Name:     "oauth_state",
+		Value:    "",
+		Path:     "/",
+		MaxAge:   -1,
+		HttpOnly: true,
+	})
+
+	// 2. Exchange Code
+	var email, name, picture string
+	
+	switch provider {
+	case "google":
+		gUser, err := services.ExchangeGoogleCode(input.Code)
+		if err != nil {
+			errors.ErrorResponse(writer, request, errors.UnauthorizedError(err.Error()))
+			return
+		}
+		email = gUser.Email
+		name = gUser.Name
+		picture = gUser.Picture
+	default:
+		errors.ErrorResponse(writer, request, errors.ValidationError("unsupported provider"))
+		return		
+	}
+
+	// 3. Login/Signup
+	ip := utils.ExtractClientIP(request)
+	ua := request.Header.Get("User-Agent")
+	
+	user, tokens, appErr := services.OAuthLogin(request.Context(), email, name, picture, ip, ua)
+	if appErr != nil {
+		errors.ErrorResponse(writer, request, appErr)
+		return
+	}
+
+	// 4. Set Cookies & Response
+	sendAuthResponse(writer, user, tokens, "Login successful")
 }

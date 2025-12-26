@@ -35,7 +35,7 @@ func main(){
 	frontendUrl := cfg.FRONTEND_URL
 	route := routes.ApiRouter()
 	
-	logger.Log.Info("🚀 Server starting", zap.String("url", "http://localhost:"+port+"/swagger/index.html"))
+	logger.Log.Info("🚀 Server Listening on ", zap.String("url", "http://localhost:"+port+"/swagger/index.html"))
 	
 	// Apply CORS middleware globally
 	handler := middlewares.CORS(frontendUrl)(route)

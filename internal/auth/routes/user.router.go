@@ -8,21 +8,21 @@ import (
 
 // UserRoutes defines user-related routes with appropriate middleware and role-based access control
 func UserRoutes(route *mux.Router) {
+	// 1. Base /user subrouter (requires authentication)
 	userRouter := route.PathPrefix("/user").Subrouter()
 	userRouter.Use(guards.AuthMiddleware)
 
-	// All authenticated users
 	userRouter.HandleFunc("", controllers.CurrentUserHandler).Methods("GET")
-	userRouter.HandleFunc("", controllers.UpdateUserHandler).Methods("PATCH")// work on this later
+	userRouter.HandleFunc("", controllers.UpdateUserHandler).Methods("PATCH")
 	userRouter.HandleFunc("/logout", controllers.LogoutHandler).Methods("POST")
 
-	// Admin only
-	userRouter.Use(guards.RequireRole("admin"))
-	userRouter.HandleFunc("/{id}", controllers.GetUserByIDHandler).Methods("GET")
+	// 2. Admin action on specific users (/user/{id})
+	adminUserRouter := userRouter.PathPrefix("/{id}").Subrouter()
+	adminUserRouter.Use(guards.RequireRole("admin"))
+	adminUserRouter.HandleFunc("", controllers.GetUserByIDHandler).Methods("GET")
 
-	// Admin-only users listing (GET /users)
-	adminListRouter := route.PathPrefix("/users").Subrouter()
-	adminListRouter.Use(guards.AuthMiddleware)
+	// 3. Admin-only user listing (/users)
+	adminListRouter := userRouter.PathPrefix("/users").Subrouter()
 	adminListRouter.Use(guards.RequireRole("admin"))
 	adminListRouter.HandleFunc("", controllers.GetAllUsersHandler).Methods("GET")
 }

@@ -27,6 +27,13 @@ type Config struct {
 	ACCESS_TOKEN_SECRET string
 	REFRESH_TOKEN_SECRET string
 	PRODUCTION_FRONTEND_URL string
+	GOOGLE_CLIENT_ID string
+	GOOGLE_CLIENT_SECRET string
+	GOOGLE_REDIRECT_URI string
+	FACEBOOK_CLIENT_ID string
+	FACEBOOK_CLIENT_SECRET string
+	APPLE_CLIENT_ID string
+	APPLE_CLIENT_SECRET string
 }
 
 func LoadConfig() Config {
@@ -53,6 +60,13 @@ func LoadConfig() Config {
 		ACCESS_TOKEN_SECRET: getEnv("ACCESS_TOKEN_SECRET", "default_access_secret"),
 		REFRESH_TOKEN_SECRET: getEnv("REFRESH_TOKEN_SECRET", "default_refresh_secret"),
 		PRODUCTION_FRONTEND_URL: getEnv("PRODUCTION_FRONTEND_URL", "http://localhost:3000"),
+		GOOGLE_CLIENT_ID: getEnv("GOOGLE_CLIENT_ID", ""),
+		GOOGLE_CLIENT_SECRET: getEnv("GOOGLE_CLIENT_SECRET", ""),
+		GOOGLE_REDIRECT_URI: getEnv("GOOGLE_REDIRECT_URI", "http://localhost:3000/auth/callback"),
+		FACEBOOK_CLIENT_ID: getEnv("FACEBOOK_CLIENT_ID", ""),
+		FACEBOOK_CLIENT_SECRET: getEnv("FACEBOOK_CLIENT_SECRET", ""),
+		APPLE_CLIENT_ID: getEnv("APPLE_CLIENT_ID", ""),
+		APPLE_CLIENT_SECRET: getEnv("APPLE_CLIENT_SECRET", ""),
 	}
 }
 
