@@ -7,6 +7,9 @@ type CurrentUserResponse struct {
 	Email     string `json:"email"`
 	Address   string `json:"address,omitempty"`
 	Role      string `json:"role"`
+	AvatarURL string `json:"avatar_url,omitempty"`
+	PhoneNumber string  `json:"phone_number,omitempty"`
+	Status    string `json:"status"`
 	CreatedAt string `json:"created_at"`
 	UpdatedAt string `json:"updated_at"`
 }

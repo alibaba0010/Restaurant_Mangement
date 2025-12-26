@@ -18,6 +18,9 @@ type User struct {
 	Email     string    `bun:",unique,notnull" json:"email"`
 	Password  string    `bun:",notnull" json:"-"`
 	Address   string    `bun:",nullzero" json:"address,omitempty"`
+	AvatarURL string    `bun:",nullzero" json:"avatar_url,omitempty"`
+	PhoneNumber string  `bun:",nullzero" json:"phone_number,omitempty"`
+	Status    string    `bun:",notnull,type:user_status,default:'active'" json:"status"`
 	Role      string    `bun:",notnull,default:'user'" json:"role"`
 	CreatedAt time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"created_at"`
 	UpdatedAt time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"updated_at"`

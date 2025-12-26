@@ -2,42 +2,29 @@ package services
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"time"
 
 	"github.com/alibaba0010/postgres-api/internal/auth/dto"
 	"github.com/alibaba0010/postgres-api/internal/auth/models"
+	"github.com/alibaba0010/postgres-api/internal/auth/repositories"
 	"github.com/alibaba0010/postgres-api/internal/common/errors"
 	"github.com/alibaba0010/postgres-api/internal/common/logger"
 	"github.com/alibaba0010/postgres-api/internal/common/types"
 	"github.com/alibaba0010/postgres-api/internal/database"
 	"github.com/go-playground/validator/v10"
-	"github.com/uptrace/bun"
 	"go.uber.org/zap"
 )
 
-// getUserByID returns a user by id. Accepts optional query modifiers.
-func getUserByID(ctx context.Context, userID string, opts ...queryOption) (*models.User, *errors.AppError) {
-	q := database.DB.NewSelect().Model((*models.User)(nil)).Where("id = ?", userID)
-
-	// Apply functional options for query customization
-	for _, opt := range opts {
-		q = opt(q)
-	}
-
-	user := &models.User{}
-	err := q.Scan(ctx)
+// getUserByID returns a user by id using repository
+func getUserByID(ctx context.Context, userID string) (*models.User, *errors.AppError) {
+	user, err := repositories.UserRepo.FindByID(ctx, userID)
 	if err != nil {
 		logger.Log.Debug("user not found by id", zap.String("user_id", userID))
 		return nil, errors.InternalError(err)
 	}
-
 	return user, nil
 }
-
-// queryOption is a functional option for query customization
-type queryOption func(*bun.SelectQuery) *bun.SelectQuery
 
 
 
@@ -56,6 +43,9 @@ func GetCurrentUserByID(ctx context.Context, userID string) (*dto.CurrentUserRes
 		Email:     user.Email,
 		Address:   user.Address,
 		Role:      user.Role,
+		Status:    user.Status,
+		AvatarURL: user.AvatarURL,
+		PhoneNumber: user.PhoneNumber,
 		CreatedAt: user.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 		UpdatedAt: user.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
 	}
@@ -74,34 +64,7 @@ func GetAllUsers(ctx context.Context, page, pageSize int, qStr, role, sortBy, or
 		pageSize = 20
 	}
 
-	// Build base query with optional filters
-	users := make([]models.User, 0)
-	sel := database.DB.NewSelect().Model(&users)
-
-	if qStr != "" {
-		like := "%" + qStr + "%"
-		sel = sel.Where("name ILIKE ? OR email ILIKE ?", like, like)
-	}
-	if role != "" {
-		sel = sel.Where("role = ?", role)
-	}
-
-	// Count total matching rows (separate query)
-	countSel := database.DB.NewSelect().Model((*models.User)(nil))
-	if qStr != "" {
-		like := "%" + qStr + "%"
-		countSel = countSel.Where("name ILIKE ? OR email ILIKE ?", like, like)
-	}
-	if role != "" {
-		countSel = countSel.Where("role = ?", role)
-	}
-	total, err := countSel.Count(ctx)
-	if err != nil {
-		logger.Log.Error("failed to count users", zap.Error(err))
-		return nil, 0, errors.InternalError(err)
-	}
-
-	// Sorting
+	// Sorting validation
 	allowedSort := map[string]bool{"name": true, "email": true, "created_at": true}
 	if !allowedSort[sortBy] {
 		sortBy = "created_at"
@@ -112,9 +75,8 @@ func GetAllUsers(ctx context.Context, page, pageSize int, qStr, role, sortBy, or
 		order = "ASC"
 	}
 
-	sel = sel.Order(fmt.Sprintf("%s %s", sortBy, order)).Limit(pageSize).Offset((page - 1) * pageSize)
-
-	if err := sel.Scan(ctx); err != nil {
+	users, total, err := repositories.UserRepo.FindAll(ctx, page, pageSize, qStr, role, sortBy, order)
+	if err != nil {
 		logger.Log.Error("failed to fetch users", zap.Error(err))
 		return nil, 0, errors.InternalError(err)
 	}
@@ -128,12 +90,15 @@ func GetAllUsers(ctx context.Context, page, pageSize int, qStr, role, sortBy, or
 			Email:     u.Email,
 			Address:   u.Address,
 			Role:      u.Role,
+			Status:    u.Status,
+			AvatarURL: u.AvatarURL,
+			PhoneNumber: u.PhoneNumber,
 			CreatedAt: u.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 			UpdatedAt: u.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
 		})
 	}
 
-	return result, int64(total), nil
+	return result, total, nil
 }
 
 // ValidateUserRole checks if a user role is valid
@@ -149,11 +114,7 @@ func ValidateUserRole(roleStr string) (types.UserRole, *errors.AppError) {
 
 // GetUserByEmail retrieves a user by email address
 func GetUserByEmail(ctx context.Context, email string) (*models.User, *errors.AppError) {
-	user := &models.User{}
-	err := database.DB.NewSelect().Model(user).
-		Where("email = ?", email).
-		Scan(ctx)
-
+	user, err := repositories.UserRepo.FindByEmail(ctx, email)
 	if err != nil {
 		logger.Log.Debug("user not found by email", zap.String("email", email))
 		return nil, errors.InternalError(err)
@@ -239,10 +200,8 @@ func UpdateUser(ctx context.Context, userID string, input dto.UpdateAddressInput
 	user.Address = input.Address
 	user.UpdatedAt = time.Now()
 
-	if _, err := tx.NewUpdate().Model(user).
-		Column("address", "updated_at").
-		Where("id = ?", userID).
-		Exec(ctx); err != nil {
+	err = repositories.UserRepo.UpdateInTx(ctx, tx, user, "address", "updated_at")
+	if err != nil {
 		logger.Log.Error("failed to update user address", zap.Error(err), zap.String("user_id", userID))
 		return nil, errors.InternalError(err)
 	}

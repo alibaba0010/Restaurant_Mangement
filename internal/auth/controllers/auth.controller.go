@@ -71,9 +71,9 @@ func ActivateUserHandler(writer http.ResponseWriter, request *http.Request) {
 		errors.ErrorResponse(writer, request, appErr)
 		return
 	}
-	request.Header.Set("Authorization", "Bearer "+tokens.AccessToken)
 
 	// set refresh token cookie
+	utils.SetAccessTokenCookie(writer, tokens.AccessToken, services.AccessTokenDuration)
 	utils.SetRefreshTokenCookie(writer, tokens.RefreshToken, services.RefreshTokenDuration)
 
 	// Return created user (omit password) + tokens
@@ -83,9 +83,7 @@ func ActivateUserHandler(writer http.ResponseWriter, request *http.Request) {
 			ID:           user.ID,
 			Name:         user.Name,
 			Email:        user.Email,
-			Role:         user.Role,
-			AccessToken:  tokens.AccessToken,
-			RefreshToken: tokens.RefreshToken,
+			Role:         user.Role,		
 		},
 	}
 	utils.WriteJSON(writer, http.StatusOK, resp)
@@ -129,9 +127,9 @@ func SigninHandler(writer http.ResponseWriter, request *http.Request) {
 		return
 	}
 	
-	request.Header.Set("Authorization", "Bearer "+tokens.AccessToken)
 
 	// Set refresh token cookie
+	utils.SetAccessTokenCookie(writer, tokens.AccessToken, services.AccessTokenDuration)
 	utils.SetRefreshTokenCookie(writer, tokens.RefreshToken, services.RefreshTokenDuration)
 
 	// Return response
@@ -141,9 +139,7 @@ func SigninHandler(writer http.ResponseWriter, request *http.Request) {
 			ID:           user.ID,
 			Name:         user.Name,
 			Email:        user.Email,
-			Role:         user.Role,
-			AccessToken:  tokens.AccessToken,
-			RefreshToken: tokens.RefreshToken,
+			Role:         user.Role,		
 		},
 	}
 	utils.WriteJSON(writer, http.StatusOK, resp)
@@ -281,6 +277,8 @@ func LogoutHandler(writer http.ResponseWriter, request *http.Request) {
 		Secure:   request.URL.Scheme == "https",
 		SameSite: http.SameSiteLaxMode,
 	})
+	
+	utils.ClearAccessTokenCookie(writer, request.URL.Scheme == "https")
 
 	response := dto.LogoutResponse{
 		Title:   "Success",

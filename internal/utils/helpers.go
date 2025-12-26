@@ -91,6 +91,38 @@ func ClearRefreshTokenCookie(writer http.ResponseWriter, isSecure bool) {
 	}
 	http.SetCookie(writer, cookie)
 }
+
+// SetAccessTokenCookie sets an access token HTTP-only cookie.
+func SetAccessTokenCookie(writer http.ResponseWriter, accessToken string, tokenDuration time.Duration) {
+	cfg := config.LoadConfig()
+	cookie := &http.Cookie{
+		Name:     "access_token",
+		Value:    accessToken,
+		HttpOnly: true,
+		Path:     "/",
+		Expires:  time.Now().Add(tokenDuration),
+		Secure:   false,
+		SameSite: http.SameSiteLaxMode,
+	}
+	if strings.HasPrefix(cfg.FRONTEND_URL, "https") {
+		cookie.Secure = true
+	}
+	http.SetCookie(writer, cookie)
+}
+
+// ClearAccessTokenCookie clears the access token cookie.
+func ClearAccessTokenCookie(writer http.ResponseWriter, isSecure bool) {
+	cookie := &http.Cookie{
+		Name:     "access_token",
+		Value:    "",
+		Path:     "/",
+		MaxAge:   -1,
+		HttpOnly: true,
+		Secure:   isSecure,
+		SameSite: http.SameSiteLaxMode,
+	}
+	http.SetCookie(writer, cookie)
+}
 // writeJSON writes a JSON response with the provided status code.
 // Keeps handlers compact and consistent.
 func WriteJSON(w http.ResponseWriter, status int, v interface{}) {

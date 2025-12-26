@@ -30,8 +30,6 @@ type SigninData struct {
 	Name         string `json:"name"`
 	Email        string `json:"email"`
 	Role         string `json:"role"`
-	AccessToken  string `json:"access_token"`
-	RefreshToken string `json:"refresh_token,omitempty"`
 }
 
 // Response is a generic API response envelope used across handlers.
@@ -44,8 +42,6 @@ type SignUpData struct {
 	Name  string `json:"name"`
 	Email string `json:"email"`
 	Role  string `json:"role"`
-	AccessToken  string `json:"access_token,omitempty"`
-	RefreshToken string `json:"refresh_token,omitempty"`
 }
 
 // UpdateAddressInput is used for updating a user's address

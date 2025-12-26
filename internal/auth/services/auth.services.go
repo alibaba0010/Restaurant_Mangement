@@ -16,6 +16,7 @@ import (
 
 	"github.com/alibaba0010/postgres-api/internal/auth/dto"
 	"github.com/alibaba0010/postgres-api/internal/auth/models"
+	"github.com/alibaba0010/postgres-api/internal/auth/repositories"
 	"github.com/alibaba0010/postgres-api/internal/common/errors"
 	"github.com/alibaba0010/postgres-api/internal/common/logger"
 	"github.com/alibaba0010/postgres-api/internal/config"
@@ -84,9 +85,7 @@ func RegisterUser(ctx context.Context, input dto.SignupInput) (*models.User, *er
 	}
 
 	// Check if user already exists
-	exists, err := database.DB.NewSelect().Model((*models.User)(nil)).
-		Where("email = ?", input.Email).
-		Exists(ctx)
+	exists, err := repositories.UserRepo.ExistsByEmail(ctx, input.Email)
 	if err != nil {
 		return nil, errors.InternalError(err)
 	}
@@ -194,9 +193,7 @@ func ActivateUser(ctx context.Context, token string) (*models.User, *errors.AppE
 	}
 
 	// Insert into DB
-	_, err = database.DB.NewInsert().Model(user).
-		Returning("id").
-		Exec(ctx)
+	err = repositories.UserRepo.Create(ctx, user)
 	if err != nil {
 		return nil, errors.InternalError(err)
 	}
@@ -218,10 +215,7 @@ func LoginUser(ctx context.Context, email, password string) (*models.User, *Toke
 	}
 
 	// Fetch user by email
-	user := &models.User{}
-	err := database.DB.NewSelect().Model(user).
-		Where("email = ?", email).
-		Scan(ctx)
+	user, err := repositories.UserRepo.FindByEmail(ctx, email)
 	if err != nil {
 		logger.Log.Debug("user not found for login", zap.String("email", email))
 		return nil, nil, errors.UnauthorizedError("invalid email or password")
@@ -302,10 +296,7 @@ func LogoutUser(ctx context.Context, userID string) (*errors.AppError) {
 	}()
 
 	// Delete all refresh tokens for the user
-	res, err := tx.NewDelete().
-		Model((*models.RefreshToken)(nil)).
-		Where("user_id = ?", userID).
-		Exec(ctx)
+	res, err := repositories.TokenRepo.DeleteAllForUserInTx(ctx, tx, userID)
 
 	if err != nil {
 		logger.Log.Error("failed to delete refresh tokens", zap.Error(err), zap.String("user_id", userID))
@@ -318,10 +309,9 @@ func LogoutUser(ctx context.Context, userID string) (*errors.AppError) {
 		return errors.InternalError(err)
 	}
 
-	rowsAffected, _ := res.RowsAffected()
 	logger.Log.Info("user logout successful", 
 		zap.String("user_id", userID),
-		zap.Int64("tokens_revoked", rowsAffected),
+		zap.Int64("tokens_revoked", res),
 	)
 
 	return nil
@@ -341,9 +331,7 @@ func RefreshTokenWithRotation(ctx context.Context, refreshToken, ip, userAgent s
 	userID := refreshClaims.UserID
 
 	// Check if refresh token exists in database
-	exists, err := database.DB.NewSelect().Model((*models.RefreshToken)(nil)).
-		Where("user_id = ? AND token = ?", userID, refreshToken).
-		Exists(ctx)
+	exists, err := repositories.TokenRepo.Exists(ctx, userID, refreshToken)
 
 	if err != nil {
 		logger.Log.Error("failed to query refresh token from DB", zap.Error(err))
@@ -363,10 +351,7 @@ func RefreshTokenWithRotation(ctx context.Context, refreshToken, ip, userAgent s
 	}
 
 	// Invalidate old refresh token (best-effort)
-	_, err = database.DB.NewDelete().
-		Model((*models.RefreshToken)(nil)).
-		Where("user_id = ? AND token = ?", userID, refreshToken).
-		Exec(ctx)
+	err = repositories.TokenRepo.DeleteOne(ctx, userID, refreshToken)
 
 	if err != nil {
 		logger.Log.Warn("failed to invalidate old refresh token", zap.Error(err), zap.String("user_id", userID))

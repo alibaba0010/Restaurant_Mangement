@@ -32,19 +32,29 @@ type AuthenticatedUser struct {
 // On fail: returns 401 with specific error (expired vs invalid)
 func AuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		tokenString := ""
 		authHeader := request.Header.Get("Authorization")
-		if authHeader == "" {
-			errors.ErrorResponse(writer, request, errors.UnauthorizedError("authorization header required"))
+		if authHeader != "" {
+			parts := strings.SplitN(authHeader, " ", 2)
+			if len(parts) == 2 && parts[0] == "Bearer" {
+				tokenString = parts[1]
+			}
+		}
+
+		// Fallback to cookie
+		if tokenString == "" {
+			cookie, err := request.Cookie("access_token")
+			if err == nil {
+				tokenString = cookie.Value
+			}
+		}
+
+		if tokenString == "" {
+			errors.ErrorResponse(writer, request, errors.UnauthorizedError("authentication required"))
 			return
 		}
 
-		parts := strings.SplitN(authHeader, " ", 2)
-		if len(parts) != 2 || parts[0] != "Bearer" {
-			errors.ErrorResponse(writer, request, errors.UnauthorizedError("invalid authorization header format"))
-			return
-		}
-
-		claims, appErr := services.VerifyAccessToken(parts[1])
+		claims, appErr := services.VerifyAccessToken(tokenString)
 		if appErr == nil {
 			ctx := context.WithValue(request.Context(), UserClaimsKey, claims)
 			next.ServeHTTP(writer, request.WithContext(ctx))

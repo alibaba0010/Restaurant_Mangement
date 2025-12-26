@@ -8,10 +8,10 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 
 	"github.com/alibaba0010/postgres-api/internal/auth/models"
+	"github.com/alibaba0010/postgres-api/internal/auth/repositories"
 	apierrors "github.com/alibaba0010/postgres-api/internal/common/errors"
 	"github.com/alibaba0010/postgres-api/internal/common/logger"
 	"github.com/alibaba0010/postgres-api/internal/config"
-	"github.com/alibaba0010/postgres-api/internal/database"
 	"github.com/alibaba0010/postgres-api/internal/utils"
 	"go.uber.org/zap"
 )
@@ -106,7 +106,7 @@ func GenerateTokenPair(ctx context.Context, userID, role, ip, userAgent string) 
 		UserAgent: userAgent,
 		ExpiresAt: now.Add(RefreshTokenDuration),
 	}
-	if _, err := database.DB.NewInsert().Model(rt).Exec(ctx); err != nil {
+	if err := repositories.TokenRepo.Create(ctx, rt); err != nil {
 		logger.Log.Error("failed to store refresh token", zap.Error(err))
 		return nil, apierrors.InternalError(err)
 	}
@@ -171,11 +171,7 @@ func RefreshAccessToken(ctx context.Context, refreshTokenString string, userID s
 	}
 
 	// Check if refresh token exists in database and matches
-	rt := &models.RefreshToken{}
-	exists, err := database.DB.NewSelect().Model(rt).
-		Where("user_id = ? AND token = ?", userID, refreshTokenString).
-		Limit(1).
-		Exists(ctx)
+	exists, err := repositories.TokenRepo.Exists(ctx, userID, refreshTokenString)
 
 	if err != nil {
 		logger.Log.Error("failed to query refresh token from DB", zap.Error(err))
