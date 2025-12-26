@@ -1,19 +1,22 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 
-	_ "github.com/alibaba0010/postgres-api/docs" // swag doc
+	"go.uber.org/zap"
+
+	_ "github.com/alibaba0010/postgres-api/docs" // swagger docs
 	"github.com/alibaba0010/postgres-api/internal/auth/routes"
 	"github.com/alibaba0010/postgres-api/internal/common/logger"
 	"github.com/alibaba0010/postgres-api/internal/config"
 	"github.com/alibaba0010/postgres-api/internal/database"
-	"go.uber.org/zap"
 )
 
 
 func main(){
+	fmt.Print("\033[H\033[2J")
 
 	logger.InitLogger()
 	// defer sync to flush logs on program exit
@@ -34,8 +37,3 @@ func main(){
 		log.Fatal(err)
 	}
 }
-
-// http.HandleFunc("/getUser", getUserHandler)
-// 	http.HandleFunc("/getBook", GetBookHandler)
-// 	http.HandleFunc("/", httpHandler)
-// if  err:= http.ListenAndServe(":"+port, nil); err != nil {

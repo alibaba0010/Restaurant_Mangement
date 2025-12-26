@@ -32,7 +32,7 @@ go.work.sum
 # .vscode/
 
 tmp/main
-internal/migration/*
+# internal/migration/*
 .vscode/launch.json
 # Ignore all Markdown files
 *.md

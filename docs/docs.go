@@ -18,7 +18,7 @@ const docTemplate = `{
       "url": "http://www.apache.org/licenses/LICENSE-2.0.html"
     }
   },
-  "host": "localhost:3000",
+  "host": "localhost:8001",
   "basePath": "/api/v1",
   "schemes": [
     "http"
@@ -42,7 +42,7 @@ const docTemplate = `{
 // SwaggerInfo holds exported Swagger Info so clients can modify it
 var SwaggerInfo = &swag.Spec{
 	Version:          "1.0.0",
-  Host:             "localhost:3000",
+  Host:             "localhost:8001",
   BasePath:         "/api/v1",
 	Schemes:          []string{"http"},
 	Title:            "Restaurant Management API",

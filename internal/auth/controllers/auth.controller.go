@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/go-playground/validator/v10"
+	"github.com/gorilla/mux"
 
 	"github.com/alibaba0010/postgres-api/internal/auth/dto"
 	"github.com/alibaba0010/postgres-api/internal/auth/models"
@@ -196,7 +198,7 @@ func ResendVerificationHandler(writer http.ResponseWriter, request *http.Request
 			if strings.EqualFold(payload.Email, email) {
 				token := strings.TrimPrefix(k, "verify:")
 				cfg := config.LoadConfig()
-				verifyURL := fmt.Sprintf("%s/api/v1/auth/verify?token=%s", cfg.FRONTEND_URL, token)
+				verifyURL := fmt.Sprintf("%s/verify?token=%s", cfg.FRONTEND_URL, token)
 				html := services.VerifyMailHTML(payload.Name, verifyURL)
 				if err := services.SendEmail(email, "Verify your email", html); err != nil {
 					errors.ErrorResponse(writer, request, errors.InternalError(err))
@@ -287,4 +289,40 @@ func LogoutHandler(writer http.ResponseWriter, request *http.Request) {
 
 	utils.WriteJSON(writer, http.StatusOK, response)
 
+}
+
+// InitiateOAuthHandler starts the OAuth flow by generating a state and setting it in a cookie.
+func InitiateOAuthHandler(writer http.ResponseWriter, request *http.Request) {
+	vars := mux.Vars(request)
+	provider := vars["provider"]
+
+	// 1. Generate state
+	state, err := utils.GenerateRandomState(32)
+	if err != nil {
+		errors.ErrorResponse(writer, request, errors.InternalError(err))
+		return
+	}
+
+	// 2. Set cookie with state
+	cfg := config.LoadConfig()
+	cookie := &http.Cookie{
+		Name:     "oauth_state",
+		Value:    state,
+		Path:     "/",
+		HttpOnly: true,
+		Secure:   false, 
+		SameSite: http.SameSiteLaxMode,
+		Expires:  time.Now().Add(15 * time.Minute),
+	}
+	if strings.HasPrefix(cfg.FRONTEND_URL, "https") {
+		cookie.Secure = true
+	}
+	http.SetCookie(writer, cookie)
+
+	// 3. For now, we return the state and provider as a mock response.
+	// In a real implementation with known providers, we would construct the Redirect URL here.
+	utils.WriteJSON(writer, http.StatusOK, dto.MessageResponse{
+		Title:   "OAuth Initiated",
+		Message: fmt.Sprintf("Provider: %s. State set in cookie.", provider),
+	})
 }

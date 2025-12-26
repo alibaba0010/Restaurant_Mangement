@@ -2,11 +2,12 @@ package utils
 
 import (
 	"crypto/rand"
+	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"net/http"
 	"strings"
 	"time"
-	"encoding/json"
 
 	"github.com/alibaba0010/postgres-api/internal/config"
 	"github.com/google/uuid"
@@ -17,12 +18,24 @@ func GenerateUUIDv7() (uuid.UUID, error) {
 	return uuid.NewV7()
 }
 
+// GenerateToken generates a random 32-byte hex string.
 func GenerateToken() (string, error) {
 	bytes := make([]byte, 32)
 	if _, err := rand.Read(bytes); err != nil {
 		return "", err
 	}
 	return hex.EncodeToString(bytes), nil
+}
+
+// GenerateRandomState generates a random state string for OAuth flows.
+// It returns a base64 URL-encoded string.
+func GenerateRandomState(n int) (string, error) {
+	b := make([]byte, n)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	// Use URLEncoding to ensure it's safe for URL parameters
+	return base64.URLEncoding.EncodeToString(b), nil
 }
 
 // extractClientIP extracts the client IP from request headers with fallbacks.

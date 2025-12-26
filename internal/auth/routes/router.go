@@ -6,8 +6,9 @@ import (
 
 	"github.com/alibaba0010/postgres-api/internal/auth/dto"
 	"github.com/alibaba0010/postgres-api/internal/common/errors"
-	"github.com/alibaba0010/postgres-api/internal/config"
 	"github.com/alibaba0010/postgres-api/internal/common/middlewares"
+	"github.com/alibaba0010/postgres-api/internal/config"
+	restaurantRoutes "github.com/alibaba0010/postgres-api/internal/restaurants/routes"
 	"github.com/gorilla/mux"
 	httpSwagger "github.com/swaggo/http-swagger"
 )
@@ -32,6 +33,7 @@ func ApiRouter() *mux.Router {
 v1.HandleFunc("/healthcheck", HealthCheckHandler).Methods("GET")
 	AuthRoutes(v1.PathPrefix("/auth").Subrouter())
 	UserRoutes(v1)
+	restaurantRoutes.RestaurantRoutes(v1)
 
 
 	route.NotFoundHandler = http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {

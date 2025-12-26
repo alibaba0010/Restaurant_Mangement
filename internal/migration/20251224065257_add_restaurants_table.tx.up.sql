@@ -1,0 +1,10 @@
+CREATE TABLE restaurants (
+    id VARCHAR(36) PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    description TEXT,
+    address VARCHAR(200) NOT NULL,
+    cuisine_type VARCHAR(100),
+    rating DECIMAL(2, 1) DEFAULT 0,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);

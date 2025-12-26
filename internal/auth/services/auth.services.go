@@ -146,7 +146,7 @@ func RegisterUser(ctx context.Context, input dto.SignupInput) (*models.User, *er
 
 	// Build verification URL
 	cfg := config.LoadConfig()
-	verifyURL := fmt.Sprintf("%s/api/v1/auth/verify?token=%s", cfg.FRONTEND_URL, token)
+	verifyURL := fmt.Sprintf("%s/verify?token=%s", cfg.FRONTEND_URL, token)
 	html := VerifyMailHTML(user.Name, verifyURL)
 		go func() {
 		if err := SendEmail(user.Email, "Verify your email", html); err != nil {
