@@ -7,7 +7,6 @@ import (
 	"github.com/alibaba0010/postgres-api/internal/auth/dto"
 	"github.com/alibaba0010/postgres-api/internal/common/errors"
 	"github.com/alibaba0010/postgres-api/internal/common/middlewares"
-	"github.com/alibaba0010/postgres-api/internal/config"
 	restaurantRoutes "github.com/alibaba0010/postgres-api/internal/restaurants/routes"
 	"github.com/gorilla/mux"
 	httpSwagger "github.com/swaggo/http-swagger"
@@ -16,10 +15,10 @@ import (
 func ApiRouter() *mux.Router {
 	route := mux.NewRouter()
 	// Add recovery, logging, CORS and rate-limit middlewares
-	cfg := config.LoadConfig()
+
 	route.Use(middlewares.Recover())
 	route.Use(middlewares.RequestLogger())
-	route.Use(middlewares.CORS(cfg.FRONTEND_URL))
+
 	// global rate limit: 100 req/sec, burst 200 (tune as needed)
 	route.Use(middlewares.RateLimit(100, 200))
 	

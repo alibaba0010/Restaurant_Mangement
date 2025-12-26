@@ -3,6 +3,7 @@ package middlewares
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/alibaba0010/postgres-api/internal/common/errors"
@@ -20,27 +21,56 @@ func RequestLogger() func(http.Handler) http.Handler {
 	return logger.Logger
 }
 
-// CORS returns a middleware that sets common CORS headers and handles preflight.
-// allowedOrigin can be '*' or a specific origin. If empty, defaults to '*'.
+// CORS returns a middleware that sets common CORS headers and handles preflight requests.
+// It supports a specific allowed origin or allows all if set to "*".
+// For development convenience, if the allowedOrigin is set to a localhost address,
+// it will also allow other localhost ports to facilitate frontend/backend distinct ports.
 func CORS(allowedOrigin string) func(http.Handler) http.Handler {
-    if allowedOrigin == "" {
-        allowedOrigin = "*"
-    }
-    return func(next http.Handler) http.Handler {
-        return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-            w.Header().Set("Access-Control-Allow-Origin", allowedOrigin)
-            w.Header().Set("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS")
-            w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With")
-            w.Header().Set("Access-Control-Allow-Credentials", "true")
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			origin := r.Header.Get("Origin")
 
-            if r.Method == http.MethodOptions {
-                // Short-circuit preflight
-                w.WriteHeader(http.StatusNoContent)
-                return
-            }
-            next.ServeHTTP(w, r)
-        })
-    }
+			// Determine if we should allow this origin
+			shouldAllow := false
+			if allowedOrigin == "*" || allowedOrigin == "" {
+				shouldAllow = true
+			} else if origin == allowedOrigin {
+				shouldAllow = true
+			} else {
+				// Dev helper: if both are localhost (ignoring scheme/port for fuzzy match in dev)
+				// This prevents strict port mismatch issues during local dev (e.g. 3000 vs 8000 vs 8001)
+				// In production, allowedOrigin should be exact.
+				if isLocalhost(allowedOrigin) && isLocalhost(origin) {
+					shouldAllow = true
+				}
+			}
+
+			if shouldAllow && origin != "" {
+				w.Header().Set("Access-Control-Allow-Origin", origin)
+			} else if allowedOrigin == "*" {
+				w.Header().Set("Access-Control-Allow-Origin", "*")
+			} else if allowedOrigin != "" {
+				// Fallback to strict configured origin if we didn't match dynamic rules but must set something
+				w.Header().Set("Access-Control-Allow-Origin", allowedOrigin)
+			}
+
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With")
+			w.Header().Set("Access-Control-Allow-Credentials", "true")
+
+			if r.Method == http.MethodOptions {
+				w.WriteHeader(http.StatusNoContent)
+				return
+			}
+
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// isLocalhost checks if the url string contains localhost or 127.0.0.1
+func isLocalhost(s string) bool {
+	return len(s) > 0 && (strings.Contains(s, "localhost") || strings.Contains(s, "127.0.0.1"))
 }
 
 // TokenBucket is a simple token bucket rate limiter

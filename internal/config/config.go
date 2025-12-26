@@ -26,6 +26,7 @@ type Config struct {
 	FRONTEND_URL string
 	ACCESS_TOKEN_SECRET string
 	REFRESH_TOKEN_SECRET string
+	PRODUCTION_FRONTEND_URL string
 }
 
 func LoadConfig() Config {
@@ -51,6 +52,7 @@ func LoadConfig() Config {
 		FRONTEND_URL:  getEnv("FRONTEND_URL", "http://localhost:3000"),
 		ACCESS_TOKEN_SECRET: getEnv("ACCESS_TOKEN_SECRET", "default_access_secret"),
 		REFRESH_TOKEN_SECRET: getEnv("REFRESH_TOKEN_SECRET", "default_refresh_secret"),
+		PRODUCTION_FRONTEND_URL: getEnv("PRODUCTION_FRONTEND_URL", "http://localhost:3000"),
 	}
 }
 
