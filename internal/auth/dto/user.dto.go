@@ -38,3 +38,14 @@ type UsersListResponse struct {
 	Data  []CurrentUserResponse  `json:"data"`
 	Meta  PaginationMeta         `json:"meta"`
 }
+
+// UpdateUserRoleInput is used for updating a user's role
+type UpdateUserRoleInput struct {
+	Role string `json:"role" validate:"required,oneof=user admin management"`
+}
+
+// UpdateUserResponse is a generic response for user updates
+type UpdateUserResponse struct {
+	Title string              `json:"title"`
+	Data  CurrentUserResponse `json:"data"`
+}

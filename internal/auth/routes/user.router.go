@@ -20,6 +20,7 @@ func UserRoutes(route *mux.Router) {
 	adminUserRouter := userRouter.PathPrefix("/{id}").Subrouter()
 	adminUserRouter.Use(guards.RequireRole("admin"))
 	adminUserRouter.HandleFunc("", controllers.GetUserByIDHandler).Methods("GET")
+	adminUserRouter.HandleFunc("/role", controllers.UpdateUserRoleHandler).Methods("PATCH")
 
 	// 3. Admin-only user listing (/users)
 	adminListRouter := userRouter.PathPrefix("/users").Subrouter()

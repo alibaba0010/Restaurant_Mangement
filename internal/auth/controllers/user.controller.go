@@ -123,3 +123,23 @@ func GetAllUsersHandler(writer http.ResponseWriter, request *http.Request) {
 	utils.WriteJSON(writer, http.StatusOK, resp)
 }
 
+// UpdateUserRoleHandler updates a user's role (admin only)
+func UpdateUserRoleHandler(writer http.ResponseWriter, request *http.Request) {
+	vars := mux.Vars(request)
+	userID := vars["id"]
+
+	var input dto.UpdateUserRoleInput
+	if err := json.NewDecoder(request.Body).Decode(&input); err != nil {
+		errors.ErrorResponse(writer, request, errors.ValidationError("invalid request body"))
+		return
+	}
+
+	response, appErr := services.UpdateUserRole(request.Context(), userID, input)
+	if appErr != nil {
+		errors.ErrorResponse(writer, request, appErr)
+		return
+	}
+
+	utils.WriteJSON(writer, http.StatusOK, response)
+}
+

@@ -224,3 +224,42 @@ func UpdateUser(ctx context.Context, userID string, input dto.UpdateAddressInput
 func GetUserByIDPublic(ctx context.Context, userID string) (*models.User, *errors.AppError) {
 	return getUserByID(ctx, userID)
 }
+
+// UpdateUserRole updates a user's role (admin only)
+func UpdateUserRole(ctx context.Context, userID string, input dto.UpdateUserRoleInput) (*dto.UpdateUserResponse, *errors.AppError) {
+	// Validate input
+	validate := validator.New()
+	if err := validate.Struct(input); err != nil {
+		return nil, errors.ValidationError("invalid role: " + input.Role)
+	}
+
+	// Fetch user
+	user, appErr := getUserByID(ctx, userID)
+	if appErr != nil {
+		return nil, errors.NotFoundError("user not found")
+	}
+
+	// Update role
+	tx, err := database.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, errors.InternalError(err)
+	}
+	defer tx.Rollback()
+
+	user.Role = input.Role
+	user.UpdatedAt = time.Now()
+
+	err = repositories.UserRepo.UpdateInTx(ctx, tx, user, "role", "updated_at")
+	if err != nil {
+		return nil, errors.InternalError(err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, errors.InternalError(err)
+	}
+
+	return &dto.UpdateUserResponse{
+		Title: "Success",
+		Data:  mapToCurrentUserResponse(user),
+	}, nil
+}
