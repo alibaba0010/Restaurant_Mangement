@@ -69,20 +69,27 @@ func SetAuthCookies(writer http.ResponseWriter, accessToken, refreshToken string
 // The Secure flag is automatically set to true if the frontend URL is HTTPS.
 func SetRefreshTokenCookie(writer http.ResponseWriter, refreshToken string, tokenDuration time.Duration) {
 	cfg := config.LoadConfig()
+	isSecure := strings.HasPrefix(cfg.FRONTEND_URL, "https")
+	
 	cookie := &http.Cookie{
 		Name:     "refresh_token",
 		Value:    refreshToken,
 		HttpOnly: true,
 		Path:     "/",
 		Expires:  time.Now().Add(tokenDuration),
-		Secure:   false,
+		Secure:   isSecure,
 		SameSite: http.SameSiteLaxMode,
 	}
-	if strings.HasPrefix(cfg.FRONTEND_URL, "https") {
-		cookie.Secure = true
+	
+	// If it's a cross-origin request in dev, some browsers might need None/Secure
+	// but Lax should work on localhost. If we want to support cross-domain, we'd need None/Secure.
+	if isSecure {
+		cookie.SameSite = http.SameSiteNoneMode
 	}
+
 	http.SetCookie(writer, cookie)
 }
+
 
 // ClearRefreshTokenCookie clears the refresh token cookie by setting MaxAge to -1.
 func ClearRefreshTokenCookie(writer http.ResponseWriter, isSecure bool) {
@@ -101,20 +108,25 @@ func ClearRefreshTokenCookie(writer http.ResponseWriter, isSecure bool) {
 // SetAccessTokenCookie sets an access token HTTP-only cookie.
 func SetAccessTokenCookie(writer http.ResponseWriter, accessToken string, tokenDuration time.Duration) {
 	cfg := config.LoadConfig()
+	isSecure := strings.HasPrefix(cfg.FRONTEND_URL, "https")
+
 	cookie := &http.Cookie{
 		Name:     "access_token",
 		Value:    accessToken,
 		HttpOnly: true,
 		Path:     "/",
 		Expires:  time.Now().Add(tokenDuration),
-		Secure:   false,
+		Secure:   isSecure,
 		SameSite: http.SameSiteLaxMode,
 	}
-	if strings.HasPrefix(cfg.FRONTEND_URL, "https") {
-		cookie.Secure = true
+
+	if isSecure {
+		cookie.SameSite = http.SameSiteNoneMode
 	}
+
 	http.SetCookie(writer, cookie)
-}
+	}
+
 
 // ClearAccessTokenCookie clears the access token cookie.
 func ClearAccessTokenCookie(writer http.ResponseWriter, isSecure bool) {

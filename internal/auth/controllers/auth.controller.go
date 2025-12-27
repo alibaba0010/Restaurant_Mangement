@@ -9,14 +9,12 @@ import (
 
 	"github.com/go-playground/validator/v10"
 	"github.com/gorilla/mux"
-	"go.uber.org/zap"
 
 	"github.com/alibaba0010/postgres-api/internal/auth/dto"
 	"github.com/alibaba0010/postgres-api/internal/auth/models"
 	"github.com/alibaba0010/postgres-api/internal/auth/services"
 	"github.com/alibaba0010/postgres-api/internal/common/errors"
 	"github.com/alibaba0010/postgres-api/internal/common/guards"
-	"github.com/alibaba0010/postgres-api/internal/common/logger"
 	"github.com/alibaba0010/postgres-api/internal/config"
 	"github.com/alibaba0010/postgres-api/internal/database"
 	"github.com/alibaba0010/postgres-api/internal/utils"
@@ -29,10 +27,13 @@ func sendAuthResponse(writer http.ResponseWriter, user *models.User, tokens *ser
 	resp := dto.SigninResponse{
 		Title: title,
 		Data: dto.SigninData{
-			ID:    user.ID,
-			Name:  user.Name,
-			Email: user.Email,
-			Role:  user.Role,
+			ID:        user.ID,
+			Name:      user.Name,
+			Email:     user.Email,
+			Role:      user.Role,
+			Status:    user.Status,
+			CreatedAt: user.CreatedAt.Format(time.RFC3339),
+			UpdatedAt: user.UpdatedAt.Format(time.RFC3339),
 		},
 	}
 	utils.WriteJSON(writer, http.StatusOK, resp)
@@ -210,7 +211,6 @@ func ResendVerificationHandler(writer http.ResponseWriter, request *http.Request
 func RefreshTokenHandler(writer http.ResponseWriter, request *http.Request) {
 	// Extract refresh token from cookie
 	refreshCookie, err := request.Cookie("refresh_token")
-	logger.Log.Info("Refresh token: ", zap.String("refresh_token", refreshCookie.Value))
 	if err != nil {
 		errors.ErrorResponse(writer, request, errors.UnauthorizedError("refresh token missing; please login again"))
 		return
@@ -237,7 +237,7 @@ func RefreshTokenHandler(writer http.ResponseWriter, request *http.Request) {
 	utils.SetAuthCookies(writer, newTokenPair.AccessToken, newTokenPair.RefreshToken, services.AccessTokenDuration, services.RefreshTokenDuration)
 
 	// Return new access token in body (optional if frontend uses cookies, but kept for compatibility)
-	utils.WriteJSON(writer, http.StatusOK, dto.AccessTokenResponse{AccessToken: newTokenPair.AccessToken})
+	utils.WriteJSON(writer, http.StatusOK, dto.MessageResponse{Title: "Success", Message: "Token refreshed successfully"})
 }
 
 // LogoutHandler logs out the current user by revoking all their refresh tokens
@@ -255,8 +255,12 @@ func LogoutHandler(writer http.ResponseWriter, request *http.Request) {
 		return
 	}
 
-	utils.ClearAccessTokenCookie(writer, request.URL.Scheme == "https")
-	utils.ClearRefreshTokenCookie(writer, request.URL.Scheme == "https")
+	// Determine if secure flag should be set based on config
+	cfg := config.LoadConfig()
+	isSecure := strings.HasPrefix(cfg.FRONTEND_URL, "https")
+
+	utils.ClearAccessTokenCookie(writer, isSecure)
+	utils.ClearRefreshTokenCookie(writer, isSecure)
 
 	utils.WriteJSON(writer, http.StatusOK, dto.LogoutResponse{
 		Title:   "Success",
@@ -332,12 +336,15 @@ func VerifyOAuthHandler(writer http.ResponseWriter, request *http.Request) {
 	}
 
 	// Clear state cookie
+	cfg := config.LoadConfig()
+	isSecure := strings.HasPrefix(cfg.FRONTEND_URL, "https")
 	http.SetCookie(writer, &http.Cookie{
 		Name:     "oauth_state",
 		Value:    "",
 		Path:     "/",
 		MaxAge:   -1,
 		HttpOnly: true,
+		Secure:   isSecure,
 	})
 
 	// 2. Exchange Code

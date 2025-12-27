@@ -10,8 +10,3 @@ type MessageResponse struct {
 type ResendVerificationInput struct {
     Email string `json:"email" validate:"required,email"`
 }
-
-// AccessTokenResponse returns a fresh access token
-type AccessTokenResponse struct {
-    AccessToken string `json:"access_token"`
-}

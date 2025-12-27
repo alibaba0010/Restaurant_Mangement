@@ -19,6 +19,7 @@ import (
 	"github.com/alibaba0010/postgres-api/internal/auth/repositories"
 	"github.com/alibaba0010/postgres-api/internal/common/errors"
 	"github.com/alibaba0010/postgres-api/internal/common/logger"
+	"github.com/alibaba0010/postgres-api/internal/common/types"
 	"github.com/alibaba0010/postgres-api/internal/config"
 	"github.com/alibaba0010/postgres-api/internal/database"
 	"github.com/alibaba0010/postgres-api/internal/utils"
@@ -79,9 +80,9 @@ func RegisterUser(ctx context.Context, input dto.SignupInput) (*models.User, *er
 	}
 
 	// Set default role if not provided
-	role := input.Role
+	role := types.UserRole(input.Role)
 	if role == "" {
-		role = "user"
+		role = types.RoleUser
 	}
 
 	// Check if user already exists
@@ -119,11 +120,11 @@ func RegisterUser(ctx context.Context, input dto.SignupInput) (*models.User, *er
 
 	// Prepare payload for Redis storage
 	payload := struct {
-		ID       string `json:"id"`
-		Name     string `json:"name"`
-		Email    string `json:"email"`
-		Password string `json:"password"`
-		Role     string `json:"role"`
+		ID       string         `json:"id"`
+		Name     string         `json:"name"`
+		Email    string         `json:"email"`
+		Password string         `json:"password"`
+		Role     types.UserRole `json:"role"`
 	}{
 		ID:       user.ID,
 		Name:     user.Name,
@@ -172,11 +173,11 @@ func ActivateUser(ctx context.Context, token string) (*models.User, *errors.AppE
 	}
 
 	var payload struct {
-		ID       string `json:"id"`
-		Name     string `json:"name"`
-		Email    string `json:"email"`
-		Password string `json:"password"`
-		Role     string `json:"role"`
+		ID       string         `json:"id"`
+		Name     string         `json:"name"`
+		Email    string         `json:"email"`
+		Password string         `json:"password"`
+		Role     types.UserRole `json:"role"`
 	}
 	if err := json.Unmarshal(data, &payload); err != nil {
 		_ = database.RedisClient.Del(ctx, key).Err()

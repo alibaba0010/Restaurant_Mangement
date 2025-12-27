@@ -54,7 +54,7 @@ func GetCurrentUserByID(ctx context.Context, userID string) (*dto.CurrentUserRes
 	}
 
 	response := mapToCurrentUserResponse(user)
-	logger.Log.Debug("user retrieved from database", zap.String("user_id", userID), zap.String("role", user.Role))
+	logger.Log.Debug("user retrieved from database", zap.String("user_id", userID), zap.String("role", string(user.Role)))
 	return &response, nil
 }
 
@@ -126,20 +126,18 @@ func LogResponse(status int, title, message string) {
 }
 
 // IsAdminRole checks if a user has admin role
-func IsAdminRole(role string) bool {
-	return role == string(types.RoleAdmin)
+func IsAdminRole(role types.UserRole) bool {
+	return role == types.RoleAdmin
 }
 
 // IsManagementRole checks if a user has management or admin role
-func IsManagementRole(role string) bool {
-	roleEnum, _ := types.ToUserRole(role)
-	return roleEnum == types.RoleManagement || roleEnum == types.RoleAdmin
+func IsManagementRole(role types.UserRole) bool {
+	return role == types.RoleManagement || role == types.RoleAdmin
 }
 
 // IsUserRole checks if a user has user role (or higher)
-func IsUserRole(role string) bool {
-	roleEnum, isValid := types.ToUserRole(role)
-	return isValid && roleEnum.IsValid()
+func IsUserRole(role types.UserRole) bool {
+	return role.IsValid()
 }
 
 // UpdateUserAddress updates a user's address using a transaction-based approach
@@ -230,7 +228,7 @@ func UpdateUserRole(ctx context.Context, userID string, input dto.UpdateUserRole
 	// Validate input
 	validate := validator.New()
 	if err := validate.Struct(input); err != nil {
-		return nil, errors.ValidationError("invalid role: " + input.Role)
+		return nil, errors.ValidationError("invalid role: " + string(input.Role))
 	}
 
 	// Fetch user

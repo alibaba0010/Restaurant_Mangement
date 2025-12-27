@@ -11,6 +11,7 @@ import (
 	"github.com/alibaba0010/postgres-api/internal/auth/repositories"
 	apierrors "github.com/alibaba0010/postgres-api/internal/common/errors"
 	"github.com/alibaba0010/postgres-api/internal/common/logger"
+	"github.com/alibaba0010/postgres-api/internal/common/types"
 	"github.com/alibaba0010/postgres-api/internal/config"
 	"github.com/alibaba0010/postgres-api/internal/utils"
 	"go.uber.org/zap"
@@ -28,17 +29,17 @@ type TokenPair struct {
 }
 // AccessClaims are the JWT claims stored in access tokens.
 type AccessTokenClaims struct {
-	UserID string `json:"user_id"`
-	Role   string `json:"role"`
+	UserID string         `json:"user_id"`
+	Role   types.UserRole `json:"role"`
 	jwt.RegisteredClaims
 }
 
 type RefreshTokenClaims struct {
-	UserID    string    `json:"user_id"`
-	Role   	  string `json:"role"`
-	Token     string    `json:"token"`
-	IPAddress string    `json:"ip_address,omitempty"`
-	UserAgent string    `json:"user_agent,omitempty"`
+	UserID    string         `json:"user_id"`
+	Role      types.UserRole `json:"role"`
+	Token     string         `json:"token"`
+	IPAddress string         `json:"ip_address,omitempty"`
+	UserAgent string         `json:"user_agent,omitempty"`
 	jwt.RegisteredClaims
 }
 type RefreshTokenStorage interface {
@@ -48,7 +49,7 @@ type RefreshTokenStorage interface {
 	DeleteUserRefreshTokens(ctx context.Context, userID string) error
 }
 
-func GenerateTokenPair(ctx context.Context, userID, role, ip, userAgent string) (*TokenPair, *apierrors.AppError) {
+func GenerateTokenPair(ctx context.Context, userID string, role types.UserRole, ip, userAgent string) (*TokenPair, *apierrors.AppError) {
 	cfg := config.LoadConfig()
 
 	now := time.Now()

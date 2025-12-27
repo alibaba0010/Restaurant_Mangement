@@ -12,6 +12,7 @@ import (
 	"github.com/alibaba0010/postgres-api/internal/auth/models"
 	"github.com/alibaba0010/postgres-api/internal/auth/repositories"
 	"github.com/alibaba0010/postgres-api/internal/common/errors"
+	"github.com/alibaba0010/postgres-api/internal/common/types"
 	"github.com/alibaba0010/postgres-api/internal/config"
 	"github.com/alibaba0010/postgres-api/internal/utils"
 )
@@ -120,8 +121,8 @@ func OAuthLogin(ctx context.Context, email, name, picture, ip, ua string) (*mode
 			Name:      name,
 			Email:     email,
 			Password:  "", // No password for social login
-			Status:    "active",
-			Role:      "user",
+			Status:    types.StatusActive,
+			Role:      types.RoleUser,
 			AvatarURL: picture,
 			CreatedAt: time.Now(),
 			UpdatedAt: time.Now(),
@@ -131,8 +132,8 @@ func OAuthLogin(ctx context.Context, email, name, picture, ip, ua string) (*mode
 			return nil, nil, errors.InternalError(err)
 		}
 	} else {
-		if user.Status == "blocked" || user.Status == "deleted" {
-			return nil, nil, errors.ForbiddenError("account is " + user.Status)
+		if user.Status == types.StatusSuspended || user.Status == types.StatusDeleted {
+			return nil, nil, errors.ForbiddenError("account is " + string(user.Status))
 		}
 	}
 

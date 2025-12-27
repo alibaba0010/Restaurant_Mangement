@@ -3,6 +3,7 @@ package dto
 import (
 	"regexp"
 
+	"github.com/alibaba0010/postgres-api/internal/common/types"
 	"github.com/go-playground/validator/v10"
 )
 
@@ -11,7 +12,8 @@ type SignupInput struct {
 	Email           string `json:"email" validate:"required,email"`
 	Password        string `json:"password" validate:"required,min=6,max=18,password_special"`
 	ConfirmPassword string `json:"confirmPassword" validate:"required,eqfield=Password"`
-	Role            string `json:"role" validate:"omitempty,oneof=user admin management"`
+	Role            types.UserRole `json:"role" validate:"omitempty,oneof=user admin management"`
+
 }
 
 type SigninInput struct {
@@ -26,10 +28,13 @@ type SigninResponse struct {
 }
 
 type SigninData struct {
-	ID           string `json:"id"`
-	Name         string `json:"name"`
-	Email        string `json:"email"`
-	Role         string `json:"role"`
+	ID        string           `json:"id"`
+	Name      string           `json:"name"`
+	Email     string           `json:"email"`
+	Role      types.UserRole   `json:"role"`
+	Status    types.UserStatus `json:"status"`
+	CreatedAt string           `json:"created_at"`
+	UpdatedAt string           `json:"updated_at"`
 }
 
 // Response is a generic API response envelope used across handlers.
@@ -41,7 +46,8 @@ type SignUpData struct {
 	ID    string `json:"id"`
 	Name  string `json:"name"`
 	Email string `json:"email"`
-	Role  string `json:"role"`
+	Role  types.UserRole `json:"role"`
+
 }
 
 // UpdateAddressInput is used for updating a user's address
@@ -53,12 +59,12 @@ type UpdateAddressInput struct {
 type UpdateAddressResponse struct {
 	Title string `json:"title"`
 	Data  struct {
-		ID        string `json:"id"`
-		Name      string `json:"name"`
-		Email     string `json:"email"`
-		Address   string `json:"address"`
-		Role      string `json:"role"`
-		UpdatedAt string `json:"updated_at"`
+		ID        string         `json:"id"`
+		Name      string         `json:"name"`
+		Email     string         `json:"email"`
+		Address   string         `json:"address"`
+		Role      types.UserRole `json:"role"`
+		UpdatedAt string         `json:"updated_at"`
 	} `json:"data"`
 }
 

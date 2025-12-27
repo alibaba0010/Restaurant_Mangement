@@ -27,3 +27,5 @@ func UserRoutes(route *mux.Router) {
 	adminListRouter.Use(guards.RequireRole("admin"))
 	adminListRouter.HandleFunc("", controllers.GetAllUsersHandler).Methods("GET")
 }
+
+//	userRouter.HandleFunc("/role/{id}", controllers.UpdateUserRoleHandler).Methods("PATCH")

@@ -24,7 +24,7 @@ const (
 // AuthenticatedUser is stored in request context for downstream handlers
 type AuthenticatedUser struct {
 	UserID string
-	Role   string
+	Role   types.UserRole
 }
 
 // AuthMiddleware validates access token from Authorization header.
@@ -89,13 +89,13 @@ func RequireRole(allowedRoles ...string) func(http.Handler) http.Handler {
 			if !CheckRolePermission(user.Role, allowedRoles...) {
 				logger.Log.Warn("unauthorized access attempt",
 					zap.String("user_id", user.UserID),
-					zap.String("user_role", user.Role),
+					zap.String("user_role", string(user.Role)),
 					zap.Strings("required_roles", allowedRoles))
 				errors.ErrorResponse(writer, request, errors.ForbiddenError("insufficient permissions for this resource"))
 				return
 			}
 
-			logger.Log.Debug("user authorized", zap.String("user_id", user.UserID), zap.String("role", user.Role))
+			logger.Log.Debug("user authorized", zap.String("user_id", user.UserID), zap.String("role", string(user.Role)))
 			next.ServeHTTP(writer, request)
 		})
 	}
@@ -104,15 +104,14 @@ func RequireRole(allowedRoles ...string) func(http.Handler) http.Handler {
 
 // CheckRolePermission checks if userRole has permission for any of requiredRoles
 // Uses role hierarchy: admin > management > user
-func CheckRolePermission(userRole string, requiredRoles ...string) bool {
-	userRoleEnum, isValid := types.ToUserRole(userRole)
-	if !isValid {
-		logger.Log.Warn("invalid user role", zap.String("role", userRole))
+func CheckRolePermission(userRole types.UserRole, requiredRoles ...string) bool {
+	if !userRole.IsValid() {
+		logger.Log.Warn("invalid user role", zap.String("role", string(userRole)))
 		return false
 	}
 
 	for _, requiredRole := range requiredRoles {
-		if requiredRoleEnum, ok := types.ToUserRole(requiredRole); ok && userRoleEnum.HasPermission(requiredRoleEnum) {
+		if requiredRoleEnum, ok := types.ToUserRole(requiredRole); ok && userRole.HasPermission(requiredRoleEnum) {
 			return true
 		}
 	}
