@@ -98,8 +98,14 @@ func GenerateTokenPair(ctx context.Context, userID, role, ip, userAgent string) 
 		return nil, apierrors.InternalError(err)
 	}
 
+	// Persist refresh token in DB
+	// First, delete any existing refresh tokens for this user to ensure single session (optional based on requirements)
+	if _, err := repositories.TokenRepo.DeleteAllForUser(ctx, userID); err != nil {
+		logger.Log.Warn("failed to delete existing refresh tokens", zap.Error(err), zap.String("user_id", userID))
+	}
+
 	rt := &models.RefreshToken{
-		ID:    newUUID.String(),
+		ID:        newUUID.String(),
 		UserID:    userID,
 		Token:     refreshStr,
 		IPAddress: ip,

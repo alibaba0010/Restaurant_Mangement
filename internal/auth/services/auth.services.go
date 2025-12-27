@@ -350,14 +350,6 @@ func RefreshTokenWithRotation(ctx context.Context, refreshToken, ip, userAgent s
 		return nil, appErr
 	}
 
-	// Invalidate old refresh token (best-effort)
-	err = repositories.TokenRepo.DeleteOne(ctx, userID, refreshToken)
-
-	if err != nil {
-		logger.Log.Warn("failed to invalidate old refresh token", zap.Error(err), zap.String("user_id", userID))
-		// Don't fail the request, token rotation is best-effort
-	}
-
 	return newTokenPair, nil
 }
 
