@@ -69,7 +69,7 @@ func GetAllUsers(ctx context.Context, page, pageSize int, qStr, role, sortBy, or
 	}
 
 	// Sorting validation
-	allowedSort := map[string]bool{"name": true, "email": true, "created_at": true}
+	allowedSort := map[string]bool{"name": true, "email": true, "created_at": true, "role": true}
 	if !allowedSort[sortBy] {
 		sortBy = "created_at"
 	}
@@ -114,15 +114,6 @@ func GetUserByEmail(ctx context.Context, email string) (*models.User, *errors.Ap
 	}
 
 	return user, nil
-}
-
-// LogResponse logs a response with status code and message
-func LogResponse(status int, title, message string) {
-	if status >= 500 {
-		logger.Log.Error(title, zap.Int("status", status), zap.String("message", message))
-	} else {
-		logger.Log.Info(title, zap.Int("status", status), zap.String("message", message))
-	}
 }
 
 // IsAdminRole checks if a user has admin role
@@ -224,7 +215,6 @@ func UpdateUser(ctx context.Context, userID string, input dto.UpdateUserInput) (
 		Data:  mapToCurrentUserResponse(user),
 	}
 
-	logger.Log.Info("user information updated", zap.String("user_id", userID))
 	return response, nil
 }
 

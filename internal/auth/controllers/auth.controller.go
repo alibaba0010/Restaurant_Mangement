@@ -2,7 +2,6 @@ package controllers
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -16,8 +15,10 @@ import (
 	"github.com/alibaba0010/postgres-api/internal/common/errors"
 	"github.com/alibaba0010/postgres-api/internal/common/guards"
 	"github.com/alibaba0010/postgres-api/internal/config"
-	"github.com/alibaba0010/postgres-api/internal/database"
+	"github.com/alibaba0010/postgres-api/internal/common/logger"
 	"github.com/alibaba0010/postgres-api/internal/utils"
+
+	"go.uber.org/zap"
 )
 
 // sendAuthResponse is a helper to centralize setting cookies and writing the final success response.
@@ -133,95 +134,44 @@ func SigninHandler(writer http.ResponseWriter, request *http.Request) {
 		errors.ErrorResponse(writer, request, appErr)
 		return
 	}
+	// log tokens
 	// set cookies and return response
 	sendAuthResponse(writer, user, tokens, "Signin successful")
 }
 
-func ResendVerificationHandler(writer http.ResponseWriter, request *http.Request) {
+
+func ResendVerificationHandler(w http.ResponseWriter, r *http.Request) {
 	var body dto.ResendVerificationInput
-	if err := json.NewDecoder(request.Body).Decode(&body); err != nil {
-		errors.ErrorResponse(writer, request, errors.ValidationError("Invalid JSON body"))
-		return
-	}
-	email := strings.TrimSpace(body.Email)
-	if email == "" {
-		errors.ErrorResponse(writer, request, errors.ValidationError("email is required"))
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		errors.ErrorResponse(w, r, errors.ValidationError("invalid JSON body"))
 		return
 	}
 
-	// If a user already exists in DB, they are activated
-	exists, err := database.DB.NewSelect().Model((*models.User)(nil)).Where("email = ?", email).Exists(request.Context())
-	if err != nil {
-		errors.ErrorResponse(writer, request, errors.InternalError(err))
-		return
-	}
-	if exists {
-		errors.ErrorResponse(writer, request, errors.ValidationError("user already exists"))
+	appErr := services.ResendVerification(r.Context(), body.Email)
+	if appErr != nil {
+		errors.ErrorResponse(w, r, appErr)
 		return
 	}
 
-	// Scan Redis for verify:* keys and find matching email
-	var cursor uint64
-	found := false
-	for {
-		keys, cur, err := database.RedisClient.Scan(request.Context(), cursor, "verify:*", 100).Result()
-		if err != nil {
-			errors.ErrorResponse(writer, request, errors.InternalError(err))
-			return
-		}
-		for _, k := range keys {
-			b, err := database.RedisClient.Get(request.Context(), k).Bytes()
-			if err != nil {
-				continue
-			}
-			var payload struct{
-				ID string `json:"id"`
-				Name string `json:"name"`
-				Email string `json:"email"`
-			}
-			if err := json.Unmarshal(b, &payload); err != nil {
-				continue
-			}
-			if strings.EqualFold(payload.Email, email) {
-				token := strings.TrimPrefix(k, "verify:")
-				cfg := config.LoadConfig()
-				verifyURL := fmt.Sprintf("%s/verify?token=%s", cfg.FRONTEND_URL, token)
-				html := services.VerifyMailHTML(payload.Name, verifyURL)
-				go func() {
-					if err := services.SendEmail(email, "Verify your email", html); err != nil {
-						errors.ErrorResponse(writer, request, errors.InternalError(err))
-						return
-					}
-				}()
-				found = true
-				break
-			}
-		}
-		if cur == 0 || found {
-			break
-		}
-		cursor = cur
-	}
-	if !found {
-		errors.ErrorResponse(writer, request, errors.ValidationError("verification token not found or expired"))
-		return
-	}
-
-	utils.WriteJSON(writer, http.StatusOK, dto.MessageResponse{Title: "Success", Message: "Verification email resent"})
+	utils.WriteJSON(w, http.StatusOK, dto.MessageResponse{
+		Title:   "Success",
+		Message: "Verification email resent",
+	})
 }
 
-// RefreshTokenHandler handles token refresh using the refresh token cookie.
-// Extracts refresh token, calls service for validation and rotation,
-// sets new cookie, and returns new access token.
+
 func RefreshTokenHandler(writer http.ResponseWriter, request *http.Request) {
 	// Extract refresh token from cookie
 	refreshCookie, err := request.Cookie("refresh_token")
+
 	if err != nil {
 		errors.ErrorResponse(writer, request, errors.UnauthorizedError("refresh token missing; please login again"))
 		return
 	}
 
 	refreshToken := refreshCookie.Value
+	logger.Log.Info("Refresh token value: ", zap.String("Refresh Token......",refreshToken))
+
 	if refreshToken == "" {
 		errors.ErrorResponse(writer, request, errors.UnauthorizedError("refresh token missing; please login again"))
 		return

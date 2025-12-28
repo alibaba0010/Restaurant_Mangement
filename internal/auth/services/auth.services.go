@@ -25,6 +25,7 @@ import (
 	"github.com/alibaba0010/postgres-api/internal/utils"
 )
 
+
 // Argon2 parameters centralized for readability and maintainability
 const (
 	argonTimeParam uint32 = 1
@@ -119,13 +120,7 @@ func RegisterUser(ctx context.Context, input dto.SignupInput) (*models.User, *er
 	}
 
 	// Prepare payload for Redis storage
-	payload := struct {
-		ID       string         `json:"id"`
-		Name     string         `json:"name"`
-		Email    string         `json:"email"`
-		Password string         `json:"password"`
-		Role     types.UserRole `json:"role"`
-	}{
+	payload := dto.VerificationPayload{
 		ID:       user.ID,
 		Name:     user.Name,
 		Email:    user.Email,
@@ -138,9 +133,13 @@ func RegisterUser(ctx context.Context, input dto.SignupInput) (*models.User, *er
 		return nil, errors.InternalError(err)
 	}
 
-	key := "verify:" + token
 	ttl := 15 * time.Minute
-	if err := database.RedisClient.Set(ctx, key, b, ttl).Err(); err != nil {
+	// Store token -> payload
+	if err := database.RedisClient.Set(ctx, "verify:"+token, b, ttl).Err(); err != nil {
+		return nil, errors.InternalError(err)
+	}
+	// Store email -> token for resending
+	if err := database.RedisClient.Set(ctx, "verify:email:"+user.Email, token, ttl).Err(); err != nil {
 		return nil, errors.InternalError(err)
 	}
 
@@ -172,13 +171,7 @@ func ActivateUser(ctx context.Context, token string) (*models.User, *errors.AppE
 		return nil, errors.InternalError(err)
 	}
 
-	var payload struct {
-		ID       string         `json:"id"`
-		Name     string         `json:"name"`
-		Email    string         `json:"email"`
-		Password string         `json:"password"`
-		Role     types.UserRole `json:"role"`
-	}
+	var payload dto.VerificationPayload
 	if err := json.Unmarshal(data, &payload); err != nil {
 		_ = database.RedisClient.Del(ctx, key).Err()
 		return nil, errors.InternalError(err)
@@ -199,10 +192,9 @@ func ActivateUser(ctx context.Context, token string) (*models.User, *errors.AppE
 		return nil, errors.InternalError(err)
 	}
 
-	// Token used within TTL -> remove it
-	if err := database.RedisClient.Del(ctx, key).Err(); err != nil {
-		logger.Log.Error("failed to delete verification token", zap.Error(err))
-	}
+	// Token used within TTL -> remove both keys
+	_ = database.RedisClient.Del(ctx, key).Err()
+	_ = database.RedisClient.Del(ctx, "verify:email:"+payload.Email).Err()
 
 	return user, nil
 }
@@ -335,7 +327,7 @@ func LogoutUser(ctx context.Context, userID string) (*errors.AppError) {
 	}()
 
 	// Delete all refresh tokens for the user
-	res, err := repositories.TokenRepo.DeleteAllForUserInTx(ctx, tx, userID)
+	_, err = repositories.TokenRepo.DeleteAllForUserInTx(ctx, tx, userID)
 
 	if err != nil {
 		logger.Log.Error("failed to delete refresh tokens", zap.Error(err), zap.String("user_id", userID))
@@ -347,11 +339,6 @@ func LogoutUser(ctx context.Context, userID string) (*errors.AppError) {
 		logger.Log.Error("failed to commit logout transaction", zap.Error(err))
 		return errors.InternalError(err)
 	}
-
-	logger.Log.Info("user logout successful", 
-		zap.String("user_id", userID),
-		zap.Int64("tokens_revoked", res),
-	)
 
 	return nil
 }
@@ -504,7 +491,74 @@ func ResetPassword(ctx context.Context, token, newPassword string) *errors.AppEr
 	// Optionally: Revoke all existing sessions for security
 	_, _ = repositories.TokenRepo.DeleteAllForUser(ctx, payload.UserID)
 
-	logger.Log.Info("password reset successful", zap.String("user_id", payload.UserID))
 	return nil
 }
 
+
+// GetVerificationPayload retrieves the verification data from Redis using the token
+func GetVerificationPayload(ctx context.Context, token string) (*dto.VerificationPayload, error) {
+	key := "verify:" + token
+	data, err := database.RedisClient.Get(ctx, key).Bytes()
+	if err != nil {
+		return nil, err
+	}
+	var payload dto.VerificationPayload
+	if err := json.Unmarshal(data, &payload); err != nil {
+		return nil, err
+	}
+	return &payload, nil
+}
+
+// ResendVerification handles the logic for resending a verification email
+func ResendVerification(ctx context.Context, email string) *errors.AppError {
+	email = strings.TrimSpace(strings.ToLower(email))
+	if email == "" {
+		return errors.ValidationError("email is required")
+	}
+
+	// 1. Check if user already exists in DB
+	exists, err := repositories.UserRepo.ExistsByEmail(ctx, email)
+	if err != nil {
+		return errors.InternalError(err)
+	}
+	if exists {
+		// Do not leak account existence, but since they are already activated, 
+		// they shouldn't be here. We return a generic success message in controller.
+		return nil 
+	}
+
+	// 2. Check if verification token exists in Redis
+	token, err := database.RedisClient.Get(ctx, "verify:email:"+email).Result()
+	if err == redisPkg.Nil {
+		return errors.ValidationError("verification link expired or not found; please sign up again")
+	}
+	if err != nil {
+		return errors.InternalError(err)
+	}
+
+	// 3. Get payload to get the user's name
+	payload, err := GetVerificationPayload(ctx, token)
+	if err != nil {
+		return errors.InternalError(err)
+	}
+
+	// 4. Send email
+	cfg := config.LoadConfig()
+	verifyURL := fmt.Sprintf("%s/verify?token=%s", cfg.FRONTEND_URL, token)
+	html := VerifyMailHTML(payload.Name, verifyURL)
+
+	go func() {
+		if err := SendEmail(email, "Verify your email", html); err != nil {
+			logger.Log.Error("failed to resend verification email", zap.Error(err), zap.String("email", email))
+		}
+	}()
+
+	return nil
+}
+
+// SendVerificationEmail is a small wrapper to fire-and-forget email sending
+func SendVerificationEmail(email, html string) {
+	if err := SendEmail(email, "Verify your email", html); err != nil {
+		logger.Log.Error("failed to send verification email", zap.Error(err), zap.String("email", email))
+	}
+}

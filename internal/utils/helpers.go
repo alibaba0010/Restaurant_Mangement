@@ -9,8 +9,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/alibaba0010/postgres-api/internal/common/logger"
 	"github.com/alibaba0010/postgres-api/internal/config"
+
 	"github.com/google/uuid"
+	"go.uber.org/zap"
 )
 func GenerateUUIDv7() (uuid.UUID, error) {
 	// uuid.NewV7 requires a source of randomness and the current time.
@@ -58,19 +61,21 @@ func SetAuthCookies(writer http.ResponseWriter, accessToken, refreshToken string
 // SetRefreshTokenCookie sets a refresh token HTTP-only cookie with proper security settings.
 // The Secure flag is automatically set to true if the frontend URL is HTTPS.
 func SetRefreshTokenCookie(writer http.ResponseWriter, refreshToken string, tokenDuration time.Duration) {
+	logger.Log.Info("Refresh token value: ", zap.String("Refresh Token......",refreshToken))
 	cfg := config.LoadConfig()
 	isSecure := strings.HasPrefix(cfg.FRONTEND_URL, "https")
-	
+
 	cookie := &http.Cookie{
 		Name:     "refresh_token",
 		Value:    refreshToken,
 		HttpOnly: true,
 		Path:     "/",
 		Expires:  time.Now().Add(tokenDuration),
+		MaxAge:   int(tokenDuration.Seconds()),
 		Secure:   isSecure,
 		SameSite: http.SameSiteLaxMode,
 	}
-	
+
 	// If it's a cross-origin request in dev, some browsers might need None/Secure
 	// but Lax should work on localhost. If we want to support cross-domain, we'd need None/Secure.
 	if isSecure {
@@ -106,6 +111,7 @@ func SetAccessTokenCookie(writer http.ResponseWriter, accessToken string, tokenD
 		HttpOnly: true,
 		Path:     "/",
 		Expires:  time.Now().Add(tokenDuration),
+		MaxAge:   int(tokenDuration.Seconds()),
 		Secure:   isSecure,
 		SameSite: http.SameSiteLaxMode,
 	}

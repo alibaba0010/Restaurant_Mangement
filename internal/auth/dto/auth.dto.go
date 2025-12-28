@@ -46,6 +46,13 @@ type SignUpResponse struct {
 	Data  SigninData `json:"data"`
 }
 
+type VerificationPayload struct {
+	ID       string         `json:"id"`
+	Name     string         `json:"name"`
+	Email    string         `json:"email"`
+	Password string         `json:"password"`
+	Role     types.UserRole `json:"role"`
+}
 
 // UpdateUserInput is used for updating a user's address or phone number
 type UpdateUserInput struct {

@@ -17,7 +17,7 @@ import (
 	"go.uber.org/zap"
 )
 const (
-	AccessTokenDuration  = 15 * time.Minute
+	AccessTokenDuration  = 15 * time.Minute //15
 	RefreshTokenDuration = 7 * 24 * time.Hour // 7 days
 )
 
