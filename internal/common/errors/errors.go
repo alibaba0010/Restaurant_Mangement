@@ -58,7 +58,7 @@ requestPath := request.URL.Path
             logger.Log.Error(appErr.Title, zap.Int("status", appErr.Status), zap.String("path", requestPath))
         }
     } else {
-        logger.Log.Info(appErr.Title, zap.Int("status", appErr.Status), zap.String("path", requestPath))
+        logger.Log.Error(appErr.Title, zap.Int("status", appErr.Status), zap.String("path", requestPath))
     }
 
     // Respond to client (only public info)

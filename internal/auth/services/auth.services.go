@@ -208,8 +208,7 @@ func ActivateUser(ctx context.Context, token string) (*models.User, *errors.AppE
 }
 
 
-// LoginUser authenticates a user by email and password
-// Returns the user and generated token pair if successful
+
 func LoginUser(ctx context.Context, email, password string) (*models.User, *TokenPair, *errors.AppError) {
 	if email == "" || password == "" {
 		return nil, nil, errors.ValidationError("email and password are required")
@@ -218,17 +217,14 @@ func LoginUser(ctx context.Context, email, password string) (*models.User, *Toke
 	// Fetch user by email
 	user, err := repositories.UserRepo.FindByEmail(ctx, email)
 	if err != nil {
-		logger.Log.Debug("user not found for login", zap.String("email", email))
-		return nil, nil, errors.UnauthorizedError("invalid email or password")
+		return nil, nil, errors.NotFoundError("invalid email or password")
 	}
 
 	// Verify password
 	if !verifyPassword(password, user.Password) {
-		logger.Log.Warn("invalid password for login", zap.String("email", email))
-		return nil, nil, errors.UnauthorizedError("invalid email or password")
+		return nil, nil, errors.NotFoundError("invalid email or password")
 	}
 
-	logger.Log.Debug("user authenticated successfully", zap.String("user_id", user.ID), zap.String("email", email))
 	return user, nil, nil
 }
 
@@ -360,3 +356,113 @@ func RefreshTokenWithRotation(ctx context.Context, refreshToken, ip, userAgent s
 // 	// Reuse the main LogoutUser function
 // 	return LogoutUser(ctx, userID)
 // }
+
+// ForgotPassword generates a password reset token and sends it via email
+func ForgotPassword(ctx context.Context, email string) *errors.AppError {
+	if email == "" {
+		return errors.ValidationError("email is required")
+	}
+
+	// Check if user exists
+	user, err := repositories.UserRepo.FindByEmail(ctx, email)
+	if err != nil {
+		return errors.NotFoundError("User not found for Password Reset")
+	}
+
+	// Generate reset token
+	token, err := utils.GenerateToken()
+	if err != nil {
+		return errors.InternalError(err)
+	}
+
+	// Store token in Redis with user ID
+	payload := struct {
+		UserID string `json:"user_id"`
+		Email  string `json:"email"`
+		Name   string `json:"name"`
+	}{
+		UserID: user.ID,
+		Email:  user.Email,
+		Name:   user.Name,
+	}
+
+	b, err := json.Marshal(payload)
+	if err != nil {
+		return errors.InternalError(err)
+	}
+
+	key := "reset:" + token
+	ttl := 15 * time.Minute
+	if err := database.RedisClient.Set(ctx, key, b, ttl).Err(); err != nil {
+		return errors.InternalError(err)
+	}
+
+	// Build reset URL
+	cfg := config.LoadConfig()
+	resetURL := fmt.Sprintf("%s/reset-password?token=%s", cfg.FRONTEND_URL, token)
+	html := ResetPasswordMailHTML(user.Name, resetURL)
+
+	// Send email asynchronously
+	go func() {
+		if err := SendEmail(user.Email, "Reset your password", html); err != nil {
+			logger.Log.Error("failed to send password reset email",
+				zap.Error(err),
+				zap.String("email", user.Email),
+				zap.String("token", token),
+			)
+		}
+	}()
+
+	return nil
+}
+
+// ResetPassword validates the reset token and updates the user's password
+func ResetPassword(ctx context.Context, token, newPassword string) *errors.AppError {
+	if token == "" || newPassword == "" {
+		return errors.ValidationError("token and password are required")
+	}
+
+	// Retrieve token data from Redis
+	key := "reset:" + token
+	data, err := database.RedisClient.Get(ctx, key).Bytes()
+	if err == redisPkg.Nil {
+		return errors.ValidationError("invalid or expired reset token")
+	}
+	if err != nil {
+		return errors.InternalError(err)
+	}
+
+	var payload struct {
+		UserID string `json:"user_id"`
+		Email  string `json:"email"`
+		Name   string `json:"name"`
+	}
+	if err := json.Unmarshal(data, &payload); err != nil {
+		_ = database.RedisClient.Del(ctx, key).Err()
+		return errors.InternalError(err)
+	}
+
+	// Hash new password
+	hashedPwd, err := hashPassword(newPassword)
+	if err != nil {
+		return errors.InternalError(err)
+	}
+
+	// Update user's password in database
+	err = repositories.UserRepo.UpdatePassword(ctx, payload.UserID, hashedPwd)
+	if err != nil {
+		return errors.InternalError(err)
+	}
+
+	// Delete reset token from Redis
+	if err := database.RedisClient.Del(ctx, key).Err(); err != nil {
+		logger.Log.Error("failed to delete reset token", zap.Error(err))
+	}
+
+	// Optionally: Revoke all existing sessions for security
+	_, _ = repositories.TokenRepo.DeleteAllForUser(ctx, payload.UserID)
+
+	logger.Log.Info("password reset successful", zap.String("user_id", payload.UserID))
+	return nil
+}
+

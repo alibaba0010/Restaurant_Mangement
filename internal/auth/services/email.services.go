@@ -109,3 +109,53 @@ func VerifyMailHTML(name, verifyURL string) string {
 		</html>
 		`, name, verifyURL, verifyURL, verifyURL, time.Now().Year())
 }
+
+// ResetPasswordMailHTML returns the HTML template for password reset emails
+func ResetPasswordMailHTML(name, resetURL string) string {
+	return fmt.Sprintf(`
+		<!doctype html>
+		<html lang="en">
+		<head>
+			<meta charset="utf-8">
+			<meta name="viewport" content="width=device-width,initial-scale=1">
+			<title>Reset your password</title>
+			<style>
+				body { background:#f4f6f8; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial; margin:0; padding:0; }
+				.container { max-width:600px; margin:36px auto; background:#ffffff; border-radius:8px; overflow:hidden; box-shadow:0 4px 18px rgba(0,0,0,0.06); }
+				.header { background:linear-gradient(90deg,#ef4444,#f97316); padding:24px; color:#fff; text-align:center; }
+				.logo { font-weight:700; font-size:20px; }
+				.content { padding:28px; color:#333; }
+				h1 { margin:0 0 8px 0; font-size:22px; }
+				p { margin:8px 0 16px 0; line-height:1.5; }
+				.button { display:inline-block; background:#ef4444; color:#fff; padding:12px 20px; border-radius:6px; text-decoration:none; font-weight:600; }
+				.muted { color:#667085; font-size:13px; }
+				.footer { background:#f8fafc; padding:16px 24px; text-align:center; font-size:13px; color:#94a3b8; }
+				.warning { background:#fef3c7; border-left:4px solid #f59e0b; padding:12px; margin:16px 0; border-radius:4px; }
+				@media (max-width:420px) { .container { margin:12px; } .content { padding:18px; } }
+			</style>
+		</head>
+		<body>
+			<div class="container">
+				<div class="header">
+					<div class="logo">Restaurant Management Platform</div>
+				</div>
+				<div class="content">
+					<h1>Reset Your Password 🔐</h1>
+					<p>Hi %s,</p>
+					<p class="muted">We received a request to reset your password for your <strong>Restaurant Management Platform</strong> account. Click the button below to create a new password.</p>
+					<div class="warning">
+						<p style="margin:0; color:#92400e; font-size:13px;"><strong>⚠️ Important:</strong> This link will expire in <strong>15 minutes</strong> for security reasons.</p>
+					</div>
+					<p style="text-align:center; margin:24px 0;"><a class="button" href="%s">Reset Password</a></p>
+					<p class="muted">If the button doesn't work, copy and paste the following link into your browser:</p>
+					<p class="muted"><a href="%s">%s</a></p>
+					<hr style="border:none;border-top:1px solid #eef2f7;margin:20px 0;" />
+					<p class="muted"><strong>Didn't request a password reset?</strong> You can safely ignore this email. Your password will remain unchanged.</p>
+					<p class="muted">Need help? Reply to this email or contact our support team at <a href="mailto:support@example.com">support@example.com</a>.</p>
+				</div>
+				<div class="footer">© %d Restaurant Management Platform — Manage reservations, menus and staff with ease.</div>
+			</div>
+		</body>
+		</html>
+		`, name, resetURL, resetURL, resetURL, time.Now().Year())
+}

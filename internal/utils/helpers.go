@@ -2,7 +2,7 @@ package utils
 
 import (
 	"crypto/rand"
-	"encoding/base64"
+	// "encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"net/http"
@@ -27,16 +27,6 @@ func GenerateToken() (string, error) {
 	return hex.EncodeToString(bytes), nil
 }
 
-// GenerateRandomState generates a random state string for OAuth flows.
-// It returns a base64 URL-encoded string.
-func GenerateRandomState(n int) (string, error) {
-	b := make([]byte, n)
-	if _, err := rand.Read(b); err != nil {
-		return "", err
-	}
-	// Use URLEncoding to ensure it's safe for URL parameters
-	return base64.URLEncoding.EncodeToString(b), nil
-}
 
 // extractClientIP extracts the client IP from request headers with fallbacks.
 func ExtractClientIP(request *http.Request) string {

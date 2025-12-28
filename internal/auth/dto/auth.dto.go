@@ -60,6 +60,18 @@ type LogoutResponse struct {
 	Message string `json:"message"`
 }
 
+// ForgotPasswordInput is used when a user requests a password reset
+type ForgotPasswordInput struct {
+	Email string `json:"email" validate:"required,email"`
+}
+
+// ResetPasswordInput is used when a user resets their password
+type ResetPasswordInput struct {
+	Token           string `json:"token" validate:"required"`
+	Password        string `json:"password" validate:"required,min=6,max=18,password_special"`
+	ConfirmPassword string `json:"confirmPassword" validate:"required,eqfield=Password"`
+}
+
 // RegisterValidators registers custom validators on the provided validator instance.
 func RegisterValidators(v *validator.Validate) {
 	_ = v.RegisterValidation("password_special", validatePasswordSpecial)

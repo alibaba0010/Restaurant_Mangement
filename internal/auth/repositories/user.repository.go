@@ -88,3 +88,14 @@ func (r *UserRepository) UpdateInTx(ctx context.Context, tx bun.Tx, user *models
 	_, err := q.Exec(ctx)
 	return err
 }
+
+// UpdatePassword updates a user's password by user ID
+func (r *UserRepository) UpdatePassword(ctx context.Context, userID, hashedPassword string) error {
+	_, err := database.DB.NewUpdate().
+		Model((*models.User)(nil)).
+		Set("password = ?", hashedPassword).
+		Where("id = ?", userID).
+		Exec(ctx)
+	return err
+}
+

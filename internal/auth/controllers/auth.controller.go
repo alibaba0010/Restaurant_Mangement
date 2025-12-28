@@ -279,7 +279,7 @@ func InitiateOAuthHandler(writer http.ResponseWriter, request *http.Request) {
 	provider := vars["provider"]
 
 	// 1. Generate state
-	state, err := utils.GenerateRandomState(32)
+	state, err := utils.GenerateToken()
 	if err != nil {
 		errors.ErrorResponse(writer, request, errors.InternalError(err))
 		return
@@ -381,3 +381,68 @@ func VerifyOAuthHandler(writer http.ResponseWriter, request *http.Request) {
 
 	sendAuthResponse(writer, user, tokens, "Login successful")
 }
+
+// ForgotPasswordHandler handles password reset requests
+func ForgotPasswordHandler(writer http.ResponseWriter, request *http.Request) {
+	var input dto.ForgotPasswordInput
+	if err := json.NewDecoder(request.Body).Decode(&input); err != nil {
+		errors.ErrorResponse(writer, request, errors.ValidationError("Invalid JSON body"))
+		return
+	}
+
+	// Trim and validate email
+	input.Email = strings.TrimSpace(input.Email)
+	validate := validator.New()
+	if err := validate.Struct(input); err != nil {
+		errors.ErrorResponse(writer, request, errors.ValidationError("valid email is required"))
+		return
+	}
+
+	// Call service to send reset email
+	appErr := services.ForgotPassword(request.Context(), input.Email)
+	if appErr != nil {
+		errors.ErrorResponse(writer, request, appErr)
+		return
+	}
+
+	// Always return success to avoid email enumeration
+	utils.WriteJSON(writer, http.StatusOK, dto.MessageResponse{
+		Title:   "Success",
+		Message: "A password reset link has been sent to your email",
+	})
+}
+
+// ResetPasswordHandler handles password reset with token
+func ResetPasswordHandler(writer http.ResponseWriter, request *http.Request) {
+	var input dto.ResetPasswordInput
+	if err := json.NewDecoder(request.Body).Decode(&input); err != nil {
+		errors.ErrorResponse(writer, request, errors.ValidationError("Invalid JSON body"))
+		return
+	}
+
+	// Trim inputs
+	input.Token = strings.TrimSpace(input.Token)
+	input.Password = strings.TrimSpace(input.Password)
+	input.ConfirmPassword = strings.TrimSpace(input.ConfirmPassword)
+
+	// Validate input
+	validate := validator.New()
+	dto.RegisterValidators(validate)
+	if err := validate.Struct(input); err != nil {
+		errors.ErrorResponse(writer, request, errors.ValidationError("invalid input"))
+		return
+	}
+
+	// Call service to reset password
+	appErr := services.ResetPassword(request.Context(), input.Token, input.Password)
+	if appErr != nil {
+		errors.ErrorResponse(writer, request, appErr)
+		return
+	}
+
+	utils.WriteJSON(writer, http.StatusOK, dto.MessageResponse{
+		Title:   "Success",
+		Message: "Your password has been reset successfully. Please login with your new password",
+	})
+}
+
