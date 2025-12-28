@@ -7,13 +7,11 @@ type CurrentUserResponse struct {
 	ID        string `json:"id"`
 	Name      string `json:"name"`
 	Email     string `json:"email"`
-	Address   string `json:"address,omitempty"`
 	Role      types.UserRole `json:"role"`
-
+	Address   string `json:"address,omitempty"`
 	AvatarURL string `json:"avatar_url,omitempty"`
 	PhoneNumber string  `json:"phone_number,omitempty"`
 	Status    types.UserStatus `json:"status"`
-
 	CreatedAt string `json:"created_at"`
 	UpdatedAt string `json:"updated_at"`
 }
@@ -44,10 +42,10 @@ type UsersListResponse struct {
 	Meta  PaginationMeta         `json:"meta"`
 }
 
-// UpdateUserRoleInput is used for updating a user's role
+// UpdateUserRoleInput is used for updating a user's role and status
 type UpdateUserRoleInput struct {
-	Role types.UserRole `json:"role" validate:"required,oneof=user admin management"`
-
+	Role   types.UserRole   `json:"role" validate:"omitempty,oneof=user admin management"`
+	Status types.UserStatus `json:"status" validate:"omitempty,oneof=active inactive suspended pending"`
 }
 
 // UpdateUserResponse is a generic response for user updates

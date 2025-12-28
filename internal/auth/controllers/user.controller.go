@@ -58,7 +58,7 @@ func UpdateUserHandler(writer http.ResponseWriter, request *http.Request) {
 		return
 	}
 
-	var input dto.UpdateAddressInput
+	var input dto.UpdateUserInput
 	if err := json.NewDecoder(request.Body).Decode(&input); err != nil {
 		errors.ErrorResponse(writer, request, errors.ValidationError("invalid request body"))
 		return

@@ -143,8 +143,8 @@ func ClearAccessTokenCookie(writer http.ResponseWriter, isSecure bool) {
 }
 // writeJSON writes a JSON response with the provided status code.
 // Keeps handlers compact and consistent.
-func WriteJSON(w http.ResponseWriter, status int, v interface{}) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(v)
+func WriteJSON(writer http.ResponseWriter, status int, v any) {
+	writer.Header().Set("Content-Type", "application/json")
+	writer.WriteHeader(status)
+	_ = json.NewEncoder(writer).Encode(v)
 }

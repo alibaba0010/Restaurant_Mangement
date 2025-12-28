@@ -16,16 +16,16 @@ func UserRoutes(route *mux.Router) {
 	userRouter.HandleFunc("", controllers.UpdateUserHandler).Methods("PATCH")
 	userRouter.HandleFunc("/logout", controllers.LogoutHandler).Methods("POST")
 
-	// 2. Admin action on specific users (/user/{id})
+	// 2. Admin-only user listing (/users)
+	adminListRouter := userRouter.PathPrefix("/users").Subrouter()
+	adminListRouter.Use(guards.RequireRole("admin"))
+	adminListRouter.HandleFunc("", controllers.GetAllUsersHandler).Methods("GET")
+
+	// 3. Admin action on specific users (/user/{id})
 	adminUserRouter := userRouter.PathPrefix("/{id}").Subrouter()
 	adminUserRouter.Use(guards.RequireRole("admin"))
 	adminUserRouter.HandleFunc("", controllers.GetUserByIDHandler).Methods("GET")
 	adminUserRouter.HandleFunc("/role", controllers.UpdateUserRoleHandler).Methods("PATCH")
-
-	// 3. Admin-only user listing (/users)
-	adminListRouter := userRouter.PathPrefix("/users").Subrouter()
-	adminListRouter.Use(guards.RequireRole("admin"))
-	adminListRouter.HandleFunc("", controllers.GetAllUsersHandler).Methods("GET")
 }
 
 //	userRouter.HandleFunc("/role/{id}", controllers.UpdateUserRoleHandler).Methods("PATCH")

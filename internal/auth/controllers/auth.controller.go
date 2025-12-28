@@ -31,6 +31,9 @@ func sendAuthResponse(writer http.ResponseWriter, user *models.User, tokens *ser
 			Name:      user.Name,
 			Email:     user.Email,
 			Role:      user.Role,
+			Address:   user.Address,
+			AvatarURL: user.AvatarURL,
+			PhoneNumber: user.PhoneNumber,
 			Status:    user.Status,
 			CreatedAt: user.CreatedAt.Format(time.RFC3339),
 			UpdatedAt: user.UpdatedAt.Format(time.RFC3339),
@@ -365,7 +368,6 @@ func VerifyOAuthHandler(writer http.ResponseWriter, request *http.Request) {
 		return		
 	}
 
-	// 3. Login/Signup
 	ip := utils.ExtractClientIP(request)
 	ua := request.Header.Get("User-Agent")
 	
@@ -375,6 +377,5 @@ func VerifyOAuthHandler(writer http.ResponseWriter, request *http.Request) {
 		return
 	}
 
-	// 4. Set Cookies & Response
 	sendAuthResponse(writer, user, tokens, "Login successful")
 }

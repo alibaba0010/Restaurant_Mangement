@@ -76,7 +76,6 @@ func ExchangeGoogleCode(code string) (*GoogleUser, error) {
 	if err := json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
 		return nil, err
 	}
-
 	// 2. Get user info
 	userInfoURL := "https://www.googleapis.com/oauth2/v2/userinfo?access_token=" + tokenResp.AccessToken
 	respInfo, err := http.Get(userInfoURL)

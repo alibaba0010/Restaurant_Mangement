@@ -32,6 +32,9 @@ type SigninData struct {
 	Name      string           `json:"name"`
 	Email     string           `json:"email"`
 	Role      types.UserRole   `json:"role"`
+	Address   string `json:"address,omitempty"`
+	AvatarURL string `json:"avatar_url,omitempty"`
+	PhoneNumber string  `json:"phone_number,omitempty"`
 	Status    types.UserStatus `json:"status"`
 	CreatedAt string           `json:"created_at"`
 	UpdatedAt string           `json:"updated_at"`
@@ -40,33 +43,16 @@ type SigninData struct {
 // Response is a generic API response envelope used across handlers.
 type SignUpResponse struct {
 	Title string      `json:"title"`
-	Data  SignUpData `json:"data"`
-}
-type SignUpData struct {
-	ID    string `json:"id"`
-	Name  string `json:"name"`
-	Email string `json:"email"`
-	Role  types.UserRole `json:"role"`
-
+	Data  SigninData `json:"data"`
 }
 
-// UpdateAddressInput is used for updating a user's address
-type UpdateAddressInput struct {
-	Address string `json:"address" validate:"required,min=5,max=255"`
+
+// UpdateUserInput is used for updating a user's address or phone number
+type UpdateUserInput struct {
+	Address     string `json:"address" validate:"omitempty,min=5,max=255"`
+	PhoneNumber string `json:"phone_number" validate:"omitempty,min=10,max=15"`
 }
 
-// UpdateAddressResponse contains the updated user data after address update
-type UpdateAddressResponse struct {
-	Title string `json:"title"`
-	Data  struct {
-		ID        string         `json:"id"`
-		Name      string         `json:"name"`
-		Email     string         `json:"email"`
-		Address   string         `json:"address"`
-		Role      types.UserRole `json:"role"`
-		UpdatedAt string         `json:"updated_at"`
-	} `json:"data"`
-}
 
 // LogoutResponse is returned after a successful logout
 type LogoutResponse struct {

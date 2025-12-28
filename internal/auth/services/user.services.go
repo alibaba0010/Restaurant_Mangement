@@ -140,9 +140,9 @@ func IsUserRole(role types.UserRole) bool {
 	return role.IsValid()
 }
 
-// UpdateUserAddress updates a user's address using a transaction-based approach
+// UpdateUser updates a user's address or phone number using a transaction-based approach
 // Demonstrates advanced patterns: explicit transaction handling, context propagation, and validation
-func UpdateUser(ctx context.Context, userID string, input dto.UpdateAddressInput) (*dto.UpdateAddressResponse, *errors.AppError) {
+func UpdateUser(ctx context.Context, userID string, input dto.UpdateUserInput) (*dto.UpdateUserResponse, *errors.AppError) {
 	// Validate input using the validator
 	validate := validator.New()
 	if err := validate.Struct(input); err != nil {
@@ -151,20 +151,18 @@ func UpdateUser(ctx context.Context, userID string, input dto.UpdateAddressInput
 			for _, fe := range ves {
 				var msg string
 				switch fe.Tag() {
-				case "required":
-					msg = "address is required"
 				case "min":
-					msg = "address must be at least 5 characters"
+					msg = fe.Field() + " is too short"
 				case "max":
-					msg = "address must be at most 255 characters"
+					msg = fe.Field() + " is too long"
 				default:
-					msg = "address is invalid"
+					msg = fe.Field() + " is invalid"
 				}
 				messages = append(messages, msg)
 			}
 			return nil, errors.ValidationErrors(messages)
 		}
-		return nil, errors.ValidationError("invalid address input")
+		return nil, errors.ValidationError("invalid user update input")
 	}
 
 	// Fetch current user first to validate existence
@@ -187,13 +185,30 @@ func UpdateUser(ctx context.Context, userID string, input dto.UpdateAddressInput
 		}
 	}()
 
-	// Update the address
-	user.Address = input.Address
-	user.UpdatedAt = time.Now()
+	// Update the fields if provided
+	var fieldsToUpdate []string
+	if input.Address != "" {
+		user.Address = input.Address
+		fieldsToUpdate = append(fieldsToUpdate, "address")
+	}
+	if input.PhoneNumber != "" {
+		user.PhoneNumber = input.PhoneNumber
+		fieldsToUpdate = append(fieldsToUpdate, "phone_number")
+	}
 
-	err = repositories.UserRepo.UpdateInTx(ctx, tx, user, "address", "updated_at")
+	if len(fieldsToUpdate) == 0 {
+		return &dto.UpdateUserResponse{
+			Title: "No changes",
+			Data:  mapToCurrentUserResponse(user),
+		}, nil
+	}
+
+	user.UpdatedAt = time.Now()
+	fieldsToUpdate = append(fieldsToUpdate, "updated_at")
+
+	err = repositories.UserRepo.UpdateInTx(ctx, tx, user, fieldsToUpdate...)
 	if err != nil {
-		logger.Log.Error("failed to update user address", zap.Error(err), zap.String("user_id", userID))
+		logger.Log.Error("failed to update user info", zap.Error(err), zap.String("user_id", userID))
 		return nil, errors.InternalError(err)
 	}
 
@@ -204,17 +219,12 @@ func UpdateUser(ctx context.Context, userID string, input dto.UpdateAddressInput
 	}
 
 	// Build and return response
-	response := &dto.UpdateAddressResponse{
+	response := &dto.UpdateUserResponse{
 		Title: "Success",
+		Data:  mapToCurrentUserResponse(user),
 	}
-	response.Data.ID = user.ID
-	response.Data.Name = user.Name
-	response.Data.Email = user.Email
-	response.Data.Address = user.Address
-	response.Data.Role = user.Role
-	response.Data.UpdatedAt = user.UpdatedAt.Format("2006-01-02T15:04:05Z07:00")
 
-	logger.Log.Info("user address updated", zap.String("user_id", userID))
+	logger.Log.Info("user information updated", zap.String("user_id", userID))
 	return response, nil
 }
 
@@ -237,17 +247,35 @@ func UpdateUserRole(ctx context.Context, userID string, input dto.UpdateUserRole
 		return nil, errors.NotFoundError("user not found")
 	}
 
-	// Update role
+	// Start transaction
 	tx, err := database.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, errors.InternalError(err)
 	}
 	defer tx.Rollback()
 
-	user.Role = input.Role
-	user.UpdatedAt = time.Now()
+	// Update role/status
+	var fieldsToUpdate []string
+	if input.Role != "" {
+		user.Role = input.Role
+		fieldsToUpdate = append(fieldsToUpdate, "role")
+	}
+	if input.Status != "" {
+		user.Status = input.Status
+		fieldsToUpdate = append(fieldsToUpdate, "status")
+	}
 
-	err = repositories.UserRepo.UpdateInTx(ctx, tx, user, "role", "updated_at")
+	if len(fieldsToUpdate) == 0 {
+		return &dto.UpdateUserResponse{
+			Title: "No changes",
+			Data:  mapToCurrentUserResponse(user),
+		}, nil
+	}
+
+	user.UpdatedAt = time.Now()
+	fieldsToUpdate = append(fieldsToUpdate, "updated_at")
+
+	err = repositories.UserRepo.UpdateInTx(ctx, tx, user, fieldsToUpdate...)
 	if err != nil {
 		return nil, errors.InternalError(err)
 	}
