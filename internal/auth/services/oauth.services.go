@@ -1,20 +1,13 @@
 package services
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
-	"time"
 
-	"github.com/alibaba0010/postgres-api/internal/auth/models"
-	"github.com/alibaba0010/postgres-api/internal/auth/repositories"
-	"github.com/alibaba0010/postgres-api/internal/common/errors"
-	"github.com/alibaba0010/postgres-api/internal/common/types"
 	"github.com/alibaba0010/postgres-api/internal/config"
-	"github.com/alibaba0010/postgres-api/internal/utils"
 )
 
 // GetGoogleAuthURL generates the Google OAuth URL
@@ -101,45 +94,3 @@ type GoogleUser struct {
 	Picture       string `json:"picture"`
 }
 
-// OAuthLogin handles the social login logic (find or create user, generate tokens)
-func OAuthLogin(ctx context.Context, email, name, picture, ip, ua string) (*models.User, *TokenPair, *errors.AppError) {
-	// Check if user exists
-	user, err := repositories.UserRepo.FindByEmail(ctx, email)
-	if err != nil {
-		// If not found (or error), we assume not found for now and try to create.
-	}
-
-	if user == nil || user.ID == "" {
-		// Create new user
-		newUUID, err := utils.GenerateUUIDv7()
-		if err != nil {
-			return nil, nil, errors.InternalError(err)
-		}
-		user = &models.User{
-			ID:        newUUID.String(),
-			Name:      name,
-			Email:     email,
-			Password:  "", // No password for social login
-			Status:    types.StatusActive,
-			Role:      types.RoleUser,
-			AvatarURL: picture,
-			CreatedAt: time.Now(),
-			UpdatedAt: time.Now(),
-		}
-
-		if err := repositories.UserRepo.Create(ctx, user); err != nil {
-			return nil, nil, errors.InternalError(err)
-		}
-	} else {
-		if user.Status == types.StatusSuspended || user.Status == types.StatusDeleted {
-			return nil, nil, errors.ForbiddenError("account is " + string(user.Status))
-		}
-	}
-
-	tokens, appErr := GenerateTokenPair(ctx, user.ID, user.Role, ip, ua)
-	if appErr != nil {
-		return nil, nil, appErr
-	}
-
-	return user, tokens, nil
-}

@@ -19,27 +19,54 @@ const usersPaths = `
 		},
 		"patch": {
 			"tags": ["Users"],
-			"summary": "Update current user's address",
-			"description": "Updates the authenticated user's address",
-			"operationId": "updateUserAddress",
+			"summary": "Update current user",
+			"description": "Updates the authenticated user's address or phone number",
+			"operationId": "updateUser",
 			"security": [ { "Bearer": [] } ],
-			"parameters": [{"in":"body","name":"body","required":true,"schema":{"$ref":"#/definitions/UpdateAddressInput"}}],
+			"parameters": [{"in":"body","name":"body","required":true,"schema":{"$ref":"#/definitions/UpdateUserInput"}}],
 			"responses": {
-				"200": {"description":"Updated","schema":{"$ref":"#/definitions/UpdateAddressResponse"}},
+				"200": {"description":"Updated","schema":{"$ref":"#/definitions/User"}},
 				"400": {"description":"Validation error","schema":{"$ref":"#/definitions/Error"}},
 				"401": {"description":"Unauthorized","schema":{"$ref":"#/definitions/Error"}},
 				"500": {"description":"Internal server error","schema":{"$ref":"#/definitions/Error"}}
 			}
-		},
+		}
+	},
+
+	"/user/logout": {
 		"post": {
 			"tags": ["Users"],
 			"summary": "Logout current user",
-			"description": "Revokes refresh tokens and clears cookie",
+			"description": "Revokes refresh tokens and clears cookies",
 			"operationId": "logout",
 			"security": [ { "Bearer": [] } ],
 			"responses": {
 				"200": {"description":"Logged out","schema":{"$ref":"#/definitions/LogoutResponse"}},
 				"401": {"description":"Unauthorized","schema":{"$ref":"#/definitions/Error"}},
+				"500": {"description":"Internal server error","schema":{"$ref":"#/definitions/Error"}}
+			}
+		}
+	},
+
+	"/user/users": {
+		"get": {
+			"tags": ["Users"],
+			"summary": "Get all users",
+			"description": "Returns a paginated list of users (admin role required)",
+			"operationId": "listUsers",
+			"security": [ { "Bearer": [] } ],
+			"parameters": [
+				{"name":"page","in":"query","type":"integer"},
+				{"name":"page_size","in":"query","type":"integer"},
+				{"name":"q","in":"query","type":"string","description":"search name/email"},
+				{"name":"role","in":"query","type":"string"},
+				{"name":"sort_by","in":"query","type":"string"},
+				{"name":"order","in":"query","type":"string","enum":["asc","desc"]}
+			],
+			"responses": {
+				"200": {"description":"Successful operation","schema":{"$ref":"#/definitions/UsersListResponse"}},
+				"401": {"description":"Unauthorized","schema":{"$ref":"#/definitions/Error"}},
+				"403": {"description":"Forbidden - requires admin role","schema":{"$ref":"#/definitions/Error"}},
 				"500": {"description":"Internal server error","schema":{"$ref":"#/definitions/Error"}}
 			}
 		}
@@ -63,27 +90,25 @@ const usersPaths = `
 		}
 	},
 
-	"/users": {
-		"get": {
+	"/user/{id}/role": {
+		"patch": {
 			"tags": ["Users"],
-			"summary": "Get all users",
-			"description": "Returns a paginated list of users (admin role required)",
-			"operationId": "listUsers",
+			"summary": "Update user role",
+			"description": "Updates a user's role (admin role required)",
+			"operationId": "updateUserRole",
 			"security": [ { "Bearer": [] } ],
 			"parameters": [
-				{"name":"page","in":"query","type":"integer"},
-				{"name":"page_size","in":"query","type":"integer"},
-				{"name":"q","in":"query","type":"string","description":"search name/email"},
-				{"name":"role","in":"query","type":"string"},
-				{"name":"sort_by","in":"query","type":"string"},
-				{"name":"order","in":"query","type":"string","enum":["asc","desc"]}
+				{"name":"id","in":"path","description":"ID of user to update","required":true,"type":"string"},
+				{"in":"body","name":"body","required":true,"schema":{"$ref":"#/definitions/UpdateUserRoleInput"}}
 			],
 			"responses": {
-				"200": {"description":"Successful operation","schema":{"$ref":"#/definitions/UsersListResponse"}},
+				"200": {"description":"Updated","schema":{"$ref":"#/definitions/User"}},
+				"400": {"description":"Validation error","schema":{"$ref":"#/definitions/Error"}},
 				"401": {"description":"Unauthorized","schema":{"$ref":"#/definitions/Error"}},
 				"403": {"description":"Forbidden - requires admin role","schema":{"$ref":"#/definitions/Error"}},
 				"500": {"description":"Internal server error","schema":{"$ref":"#/definitions/Error"}}
 			}
 		}
 	},
+
 `

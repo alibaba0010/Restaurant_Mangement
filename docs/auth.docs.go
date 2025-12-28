@@ -125,12 +125,7 @@ const authPaths = `
 					"description": "Signin request",
 					"required": true,
 					"schema": {
-						"type": "object",
-						"properties": {
-							"email": {"type": "string", "format": "email"},
-							"password": {"type": "string", "format": "password"}
-						},
-						"required": ["email","password"]
+						"$ref": "#/definitions/SigninInput"
 					}
 				}
 			],
@@ -142,4 +137,102 @@ const authPaths = `
 			}
 		}
 	},
+
+	"/auth/forgot-password": {
+		"post": {
+			"tags": ["Auth"],
+			"summary": "Request password reset",
+			"description": "Sends a password reset email to the user",
+			"operationId": "forgotPassword",
+			"parameters": [
+				{
+					"in": "body",
+					"name": "body",
+					"required": true,
+					"schema": { "$ref": "#/definitions/ForgotPasswordInput" }
+				}
+			],
+			"responses": {
+				"200": {"description": "Reset email sent", "schema": {"$ref": "#/definitions/MessageResponse"}},
+				"400": {"description": "Validation error", "schema": {"$ref": "#/definitions/Error"}},
+				"500": {"description": "Internal server error", "schema": {"$ref": "#/definitions/Error"}}
+			}
+		}
+	},
+
+	"/auth/reset-password": {
+		"post": {
+			"tags": ["Auth"],
+			"summary": "Reset password",
+			"description": "Resets the user password using a token",
+			"operationId": "resetPassword",
+			"parameters": [
+				{
+					"in": "body",
+					"name": "body",
+					"required": true,
+					"schema": { "$ref": "#/definitions/ResetPasswordInput" }
+				}
+			],
+			"responses": {
+				"200": {"description": "Password reset successful", "schema": {"$ref": "#/definitions/MessageResponse"}},
+				"400": {"description": "Validation error", "schema": {"$ref": "#/definitions/Error"}},
+				"500": {"description": "Internal server error", "schema": {"$ref": "#/definitions/Error"}}
+			}
+		}
+	},
+
+	"/auth/{provider}/login": {
+		"get": {
+			"tags": ["Auth"],
+			"summary": "Initiate OAuth login",
+			"description": "Returns the OAuth provider's login URL",
+			"operationId": "initiateOAuth",
+			"parameters": [
+				{
+					"name": "provider",
+					"in": "path",
+					"required": true,
+					"type": "string",
+					"enum": ["google", "facebook"]
+				}
+			],
+			"responses": {
+				"200": {"description": "OAuth URL", "schema": {"$ref": "#/definitions/OAuthLoginResponse"}},
+				"400": {"description": "Unsupported provider", "schema": {"$ref": "#/definitions/Error"}},
+				"500": {"description": "Internal server error", "schema": {"$ref": "#/definitions/Error"}}
+			}
+		}
+	},
+
+	"/auth/{provider}/verify": {
+		"post": {
+			"tags": ["Auth"],
+			"summary": "Verify OAuth callback",
+			"description": "Exchanges code for user info and returns a login response",
+			"operationId": "verifyOAuth",
+			"parameters": [
+				{
+					"name": "provider",
+					"in": "path",
+					"required": true,
+					"type": "string",
+					"enum": ["google", "facebook"]
+				},
+				{
+					"in": "body",
+					"name": "body",
+					"required": true,
+					"schema": { "$ref": "#/definitions/VerifyOAuthInput" }
+				}
+			],
+			"responses": {
+				"200": {"description": "Login successful", "schema": {"$ref": "#/definitions/SigninResponse"}},
+				"400": {"description": "Validation error", "schema": {"$ref": "#/definitions/Error"}},
+				"403": {"description": "Forbidden", "schema": {"$ref": "#/definitions/Error"}},
+				"500": {"description": "Internal server error", "schema": {"$ref": "#/definitions/Error"}}
+			}
+		}
+	},
+
 `

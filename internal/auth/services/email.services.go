@@ -91,11 +91,11 @@ func VerifyMailHTML(name, verifyURL string) string {
 		<body>
 			<div class="container">
 				<div class="header">
-					<div class="logo">Restaurant Management Platform</div>
+					<div class="logo">GourmetHub Restaurant Management Platform</div>
 				</div>
 				<div class="content">
 					<h1>Welcome, %s 👋</h1>
-					<p class="muted">You're signing up to the <strong>Restaurant Management Platform</strong>. To finish creating your account and secure your restaurant data, please verify your email address by clicking the button below.</p>
+					<p class="muted">You're signing up to the <strong>GourmetHub Restaurant Management Platform</strong>. To finish creating your account and secure your restaurant data, please verify your email address by clicking the button below.</p>
 					<p style="font-weight:700; color:#dc2626;">Please verify your email within <strong>15 minutes</strong>; the verification link will expire after that.</p>
 					<p style="text-align:center; margin:24px 0;"><a class="button" href="%s">Verify your email</a></p>
 					<p class="muted">If the button doesn't work, copy and paste the following link into your browser:</p>
@@ -103,7 +103,7 @@ func VerifyMailHTML(name, verifyURL string) string {
 					<hr style="border:none;border-top:1px solid #eef2f7;margin:20px 0;" />
 					<p class="muted">Need help? Reply to this email or contact our support team at <a href="mailto:support@example.com">support@example.com</a>.</p>
 				</div>
-				<div class="footer">© %d Restaurant Management Platform — Manage reservations, menus and staff with ease.</div>
+				<div class="footer">© %d GourmetHub Restaurant Management Platform — Manage reservations, menus and staff with ease.</div>
 			</div>
 		</body>
 		</html>
@@ -137,12 +137,12 @@ func ResetPasswordMailHTML(name, resetURL string) string {
 		<body>
 			<div class="container">
 				<div class="header">
-					<div class="logo">Restaurant Management Platform</div>
+					<div class="logo">GourmetHub Restaurant Management Platform</div>
 				</div>
 				<div class="content">
 					<h1>Reset Your Password 🔐</h1>
 					<p>Hi %s,</p>
-					<p class="muted">We received a request to reset your password for your <strong>Restaurant Management Platform</strong> account. Click the button below to create a new password.</p>
+					<p class="muted">We received a request to reset your password for your <strong>GourmetHub Restaurant Management Platform</strong> account. Click the button below to create a new password.</p>
 					<div class="warning">
 						<p style="margin:0; color:#92400e; font-size:13px;"><strong>⚠️ Important:</strong> This link will expire in <strong>15 minutes</strong> for security reasons.</p>
 					</div>
@@ -153,7 +153,7 @@ func ResetPasswordMailHTML(name, resetURL string) string {
 					<p class="muted"><strong>Didn't request a password reset?</strong> You can safely ignore this email. Your password will remain unchanged.</p>
 					<p class="muted">Need help? Reply to this email or contact our support team at <a href="mailto:support@example.com">support@example.com</a>.</p>
 				</div>
-				<div class="footer">© %d Restaurant Management Platform — Manage reservations, menus and staff with ease.</div>
+				<div class="footer">© %d GourmetHub Restaurant Management Platform — Manage reservations, menus and staff with ease.</div>
 			</div>
 		</body>
 		</html>
