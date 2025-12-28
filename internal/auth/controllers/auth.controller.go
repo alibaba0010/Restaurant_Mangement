@@ -187,10 +187,12 @@ func ResendVerificationHandler(writer http.ResponseWriter, request *http.Request
 				cfg := config.LoadConfig()
 				verifyURL := fmt.Sprintf("%s/verify?token=%s", cfg.FRONTEND_URL, token)
 				html := services.VerifyMailHTML(payload.Name, verifyURL)
-				if err := services.SendEmail(email, "Verify your email", html); err != nil {
-					errors.ErrorResponse(writer, request, errors.InternalError(err))
-					return
-				}
+				go func() {
+					if err := services.SendEmail(email, "Verify your email", html); err != nil {
+						errors.ErrorResponse(writer, request, errors.InternalError(err))
+						return
+					}
+				}()
 				found = true
 				break
 			}
