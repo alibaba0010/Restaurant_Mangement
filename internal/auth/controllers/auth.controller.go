@@ -14,13 +14,14 @@ import (
 	"github.com/alibaba0010/postgres-api/internal/auth/services"
 	"github.com/alibaba0010/postgres-api/internal/common/errors"
 	"github.com/alibaba0010/postgres-api/internal/common/guards"
-	"github.com/alibaba0010/postgres-api/internal/config"
 	"github.com/alibaba0010/postgres-api/internal/common/logger"
+	"github.com/alibaba0010/postgres-api/internal/config"
 	"github.com/alibaba0010/postgres-api/internal/utils"
 
 	"go.uber.org/zap"
 )
 
+// sendAuthResponse is a helper to centralize setting cookies and writing the final success response.
 // sendAuthResponse is a helper to centralize setting cookies and writing the final success response.
 func sendAuthResponse(writer http.ResponseWriter, user *models.User, tokens *services.TokenPair, title string) {
 	utils.SetAuthCookies(writer, tokens.AccessToken, tokens.RefreshToken, services.AccessTokenDuration, services.RefreshTokenDuration)
@@ -28,16 +29,17 @@ func sendAuthResponse(writer http.ResponseWriter, user *models.User, tokens *ser
 	resp := dto.SigninResponse{
 		Title: title,
 		Data: dto.SigninData{
-			ID:        user.ID,
-			Name:      user.Name,
-			Email:     user.Email,
-			Role:      user.Role,
-			Address:   user.Address,
-			AvatarURL: user.AvatarURL,
+			ID:          user.ID,
+			Name:        user.Name,
+			Email:       user.Email,
+			Role:        user.Role,
+			Address:     user.Address,
+			AvatarURL:   user.AvatarURL,
 			PhoneNumber: user.PhoneNumber,
-			Status:    user.Status,
-			CreatedAt: user.CreatedAt.Format(time.RFC3339),
-			UpdatedAt: user.UpdatedAt.Format(time.RFC3339),
+			Status:      user.Status,
+			CreatedAt:   user.CreatedAt.Format(time.RFC3339),
+			UpdatedAt:   user.UpdatedAt.Format(time.RFC3339),
+			AccessToken: tokens.AccessToken,
 		},
 	}
 	utils.WriteJSON(writer, http.StatusOK, resp)
@@ -191,8 +193,12 @@ func RefreshTokenHandler(writer http.ResponseWriter, request *http.Request) {
 	// Set new cookies
 	utils.SetAuthCookies(writer, newTokenPair.AccessToken, newTokenPair.RefreshToken, services.AccessTokenDuration, services.RefreshTokenDuration)
 
-	// Return new access token in body (optional if frontend uses cookies, but kept for compatibility)
-	utils.WriteJSON(writer, http.StatusOK, dto.MessageResponse{Title: "Success", Message: "Token refreshed successfully"})
+	// Return new access token in body
+	utils.WriteJSON(writer, http.StatusOK, dto.MessageResponse{
+		Title:       "Success",
+		Message:     "Token refreshed successfully",
+		AccessToken: newTokenPair.AccessToken,
+	})
 }
 
 // LogoutHandler logs out the current user by revoking all their refresh tokens

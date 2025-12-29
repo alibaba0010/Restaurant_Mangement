@@ -38,6 +38,7 @@ type SigninData struct {
 	Status    types.UserStatus `json:"status"`
 	CreatedAt string           `json:"created_at"`
 	UpdatedAt string           `json:"updated_at"`
+	AccessToken string `json:"access_token,omitempty"`
 }
 
 // Response is a generic API response envelope used across handlers.
@@ -66,7 +67,6 @@ type LogoutResponse struct {
 	Title   string `json:"title"`
 	Message string `json:"message"`
 }
-
 // ForgotPasswordInput is used when a user requests a password reset
 type ForgotPasswordInput struct {
 	Email string `json:"email" validate:"required,email"`
