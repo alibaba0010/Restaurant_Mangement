@@ -39,6 +39,10 @@ type Config struct {
 	FACEBOOK_CLIENT_SECRET  string
 	APPLE_CLIENT_ID         string
 	APPLE_CLIENT_SECRET     string
+	AWS_ACCESS_KEY_ID       string
+	AWS_SECRET_ACCESS_KEY   string
+	AWS_REGION              string
+	AWS_BUCKET_NAME         string
 }
 
 func LoadConfig() Config {
@@ -72,6 +76,10 @@ func LoadConfig() Config {
 			FACEBOOK_CLIENT_SECRET:  getEnv("FACEBOOK_CLIENT_SECRET", ""),
 			APPLE_CLIENT_ID:         getEnv("APPLE_CLIENT_ID", ""),
 			APPLE_CLIENT_SECRET:     getEnv("APPLE_CLIENT_SECRET", ""),
+			AWS_ACCESS_KEY_ID:       getEnv("AWS_ACCESS_KEY_ID", ""),
+			AWS_SECRET_ACCESS_KEY:   getEnv("AWS_SECRET_ACCESS_KEY", ""),
+			AWS_REGION:              getEnv("AWS_REGION", "us-east-1"),
+			AWS_BUCKET_NAME:         getEnv("AWS_BUCKET_NAME", ""),
 		}
 	})
 	return cfg

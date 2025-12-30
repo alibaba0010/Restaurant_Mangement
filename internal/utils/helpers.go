@@ -21,6 +21,10 @@ func GenerateUUIDv7() (uuid.UUID, error) {
 	return uuid.NewV7()
 }
 
+func ParseUUID(s string) (uuid.UUID, error) {
+	return uuid.Parse(s)
+}
+
 // GenerateToken generates a random 32-byte hex string.
 func GenerateToken() (string, error) {
 	bytes := make([]byte, 32)

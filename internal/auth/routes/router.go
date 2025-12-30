@@ -33,6 +33,7 @@ v1.HandleFunc("/healthcheck", HealthCheckHandler).Methods("GET")
 	AuthRoutes(v1.PathPrefix("/auth").Subrouter())
 	UserRoutes(v1)
 	restaurantRoutes.RestaurantRoutes(v1)
+	restaurantRoutes.MenuRoutes(v1)
 
 
 	route.NotFoundHandler = http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {

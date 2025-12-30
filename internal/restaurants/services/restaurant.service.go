@@ -21,13 +21,34 @@ func CreateRestaurant(ctx context.Context, input dto.CreateRestaurantInput) (*dt
 	}
 
 	restaurant := &models.Restaurant{
-		ID:          id.String(),
+		ID:          id,
 		Name:        input.Name,
 		Description: input.Description,
 		Address:     input.Address,
-		CuisineType: input.CuisineType,
+		AvatarURL:   input.AvatarURL,
+		Status:      models.RestaurantStatusActive,
 		CreatedAt:   time.Now(),
 		UpdatedAt:   time.Now(),
+	}
+
+	// Set optional fields
+	if input.Status != "" {
+		restaurant.Status = models.RestaurantStatus(input.Status)
+	}
+	if input.UserID != nil {
+		uuid, err := utils.ParseUUID(*input.UserID)
+		if err == nil {
+			restaurant.UserID = &uuid
+		}
+	}
+	if input.Capacity != nil {
+		restaurant.Capacity = *input.Capacity
+	}
+	if input.DeliveryAvailable != nil {
+		restaurant.DeliveryAvailable = *input.DeliveryAvailable
+	}
+	if input.TakeawayAvailable != nil {
+		restaurant.TakeawayAvailable = *input.TakeawayAvailable
 	}
 
 	_, err = database.DB.NewInsert().Model(restaurant).Exec(ctx)
@@ -36,15 +57,26 @@ func CreateRestaurant(ctx context.Context, input dto.CreateRestaurantInput) (*dt
 		return nil, errors.InternalError(err)
 	}
 
+	var userIDStr *string
+	if restaurant.UserID != nil {
+		idStr := restaurant.UserID.String()
+		userIDStr = &idStr
+	}
+
 	return &dto.RestaurantResponse{
-		ID:          restaurant.ID,
-		Name:        restaurant.Name,
-		Description: restaurant.Description,
-		Address:     restaurant.Address,
-		CuisineType: restaurant.CuisineType,
-		Rating:      restaurant.Rating,
-		CreatedAt:   restaurant.CreatedAt.Format(time.RFC3339),
-		UpdatedAt:   restaurant.UpdatedAt.Format(time.RFC3339),
+		ID:                restaurant.ID.String(),
+		Name:              restaurant.Name,
+		Description:       restaurant.Description,
+		Address:           restaurant.Address,
+		AvatarURL:         restaurant.AvatarURL,
+		Status:            string(restaurant.Status),
+		UserID:            userIDStr,
+		Capacity:          restaurant.Capacity,
+		DeliveryAvailable: restaurant.DeliveryAvailable,
+		TakeawayAvailable: restaurant.TakeawayAvailable,
+		Rating:            restaurant.Rating,
+		CreatedAt:         restaurant.CreatedAt.Format(time.RFC3339),
+		UpdatedAt:         restaurant.UpdatedAt.Format(time.RFC3339),
 	}, nil
 }
 
@@ -56,20 +88,31 @@ func GetRestaurantByID(ctx context.Context, id string) (*dto.RestaurantResponse,
 		return nil, errors.NotFoundError("restaurant not found")
 	}
 
+	var userIDStr *string
+	if restaurant.UserID != nil {
+		idStr := restaurant.UserID.String()
+		userIDStr = &idStr
+	}
+
 	return &dto.RestaurantResponse{
-		ID:          restaurant.ID,
-		Name:        restaurant.Name,
-		Description: restaurant.Description,
-		Address:     restaurant.Address,
-		CuisineType: restaurant.CuisineType,
-		Rating:      restaurant.Rating,
-		CreatedAt:   restaurant.CreatedAt.Format(time.RFC3339),
-		UpdatedAt:   restaurant.UpdatedAt.Format(time.RFC3339),
+		ID:                restaurant.ID.String(),
+		Name:              restaurant.Name,
+		Description:       restaurant.Description,
+		Address:           restaurant.Address,
+		AvatarURL:         restaurant.AvatarURL,
+		Status:            string(restaurant.Status),
+		UserID:            userIDStr,
+		Capacity:          restaurant.Capacity,
+		DeliveryAvailable: restaurant.DeliveryAvailable,
+		TakeawayAvailable: restaurant.TakeawayAvailable,
+		Rating:            restaurant.Rating,
+		CreatedAt:         restaurant.CreatedAt.Format(time.RFC3339),
+		UpdatedAt:         restaurant.UpdatedAt.Format(time.RFC3339),
 	}, nil
 }
 
 // GetAllRestaurants retrieves a paginated list of restaurants
-func GetAllRestaurants(ctx context.Context, page, pageSize int, qStr string) ([]dto.RestaurantResponse, int64, *errors.AppError) {
+func GetAllRestaurants(ctx context.Context, page, pageSize int, qStr string, userID *string) ([]dto.RestaurantResponse, int64, *errors.AppError) {
 	if page <= 0 {
 		page = 1
 	}
@@ -82,14 +125,21 @@ func GetAllRestaurants(ctx context.Context, page, pageSize int, qStr string) ([]
 
 	if qStr != "" {
 		like := "%" + qStr + "%"
-		query = query.Where("name ILIKE ? OR cuisine_type ILIKE ?", like, like)
+		query = query.Where("name ILIKE ? OR description ILIKE ?", like, like)
+	}
+
+	if userID != nil {
+		query = query.Where("user_id = ?", *userID)
 	}
 
 	// Count total
 	countQuery := database.DB.NewSelect().Model((*models.Restaurant)(nil))
 	if qStr != "" {
 		like := "%" + qStr + "%"
-		countQuery = countQuery.Where("name ILIKE ? OR cuisine_type ILIKE ?", like, like)
+		countQuery = countQuery.Where("name ILIKE ? OR description ILIKE ?", like, like)
+	}
+	if userID != nil {
+		countQuery = countQuery.Where("user_id = ?", *userID)
 	}
 	total, err := countQuery.Count(ctx)
 	if err != nil {
@@ -106,15 +156,26 @@ func GetAllRestaurants(ctx context.Context, page, pageSize int, qStr string) ([]
 	// Map to DTO
 	responses := make([]dto.RestaurantResponse, len(restaurants))
 	for i, r := range restaurants {
+		var userIDStr *string
+		if r.UserID != nil {
+			idStr := r.UserID.String()
+			userIDStr = &idStr
+		}
+
 		responses[i] = dto.RestaurantResponse{
-			ID:          r.ID,
-			Name:        r.Name,
-			Description: r.Description,
-			Address:     r.Address,
-			CuisineType: r.CuisineType,
-			Rating:      r.Rating,
-			CreatedAt:   r.CreatedAt.Format(time.RFC3339),
-			UpdatedAt:   r.UpdatedAt.Format(time.RFC3339),
+			ID:                r.ID.String(),
+			Name:              r.Name,
+			Description:       r.Description,
+			Address:           r.Address,
+			AvatarURL:         r.AvatarURL,
+			Status:            string(r.Status),
+			UserID:            userIDStr,
+			Capacity:          r.Capacity,
+			DeliveryAvailable: r.DeliveryAvailable,
+			TakeawayAvailable: r.TakeawayAvailable,
+			Rating:            r.Rating,
+			CreatedAt:         r.CreatedAt.Format(time.RFC3339),
+			UpdatedAt:         r.UpdatedAt.Format(time.RFC3339),
 		}
 	}
 
@@ -138,8 +199,26 @@ func UpdateRestaurant(ctx context.Context, id string, input dto.UpdateRestaurant
 	if input.Address != "" {
 		restaurant.Address = input.Address
 	}
-	if input.CuisineType != "" {
-		restaurant.CuisineType = input.CuisineType
+	if input.AvatarURL != "" {
+		restaurant.AvatarURL = input.AvatarURL
+	}
+	if input.Status != "" {
+		restaurant.Status = models.RestaurantStatus(input.Status)
+	}
+	if input.UserID != nil {
+		uuid, err := utils.ParseUUID(*input.UserID)
+		if err == nil {
+			restaurant.UserID = &uuid
+		}
+	}
+	if input.Capacity != nil {
+		restaurant.Capacity = *input.Capacity
+	}
+	if input.DeliveryAvailable != nil {
+		restaurant.DeliveryAvailable = *input.DeliveryAvailable
+	}
+	if input.TakeawayAvailable != nil {
+		restaurant.TakeawayAvailable = *input.TakeawayAvailable
 	}
 	if input.Rating != nil {
 		restaurant.Rating = *input.Rating
@@ -151,14 +230,25 @@ func UpdateRestaurant(ctx context.Context, id string, input dto.UpdateRestaurant
 		return nil, errors.InternalError(err)
 	}
 
+	var userIDStr *string
+	if restaurant.UserID != nil {
+		idStr := restaurant.UserID.String()
+		userIDStr = &idStr
+	}
+
 	return &dto.RestaurantResponse{
-		ID:          restaurant.ID,
-		Name:        restaurant.Name,
-		Description: restaurant.Description,
-		Address:     restaurant.Address,
-		CuisineType: restaurant.CuisineType,
-		Rating:      restaurant.Rating,
-		CreatedAt:   restaurant.CreatedAt.Format(time.RFC3339),
-		UpdatedAt:   restaurant.UpdatedAt.Format(time.RFC3339),
+		ID:                restaurant.ID.String(),
+		Name:              restaurant.Name,
+		Description:       restaurant.Description,
+		Address:           restaurant.Address,
+		AvatarURL:         restaurant.AvatarURL,
+		Status:            string(restaurant.Status),
+		UserID:            userIDStr,
+		Capacity:          restaurant.Capacity,
+		DeliveryAvailable: restaurant.DeliveryAvailable,
+		TakeawayAvailable: restaurant.TakeawayAvailable,
+		Rating:            restaurant.Rating,
+		CreatedAt:         restaurant.CreatedAt.Format(time.RFC3339),
+		UpdatedAt:         restaurant.UpdatedAt.Format(time.RFC3339),
 	}, nil
 }
