@@ -48,3 +48,28 @@ type MenusListResponse struct {
 	Data []MenuResponse `json:"data"`
 	Meta commondto.PaginationMeta `json:"meta"`
 }
+// InitiateMultipartUploadInput represents the request to start a multipart upload
+type InitiateMultipartUploadInput struct {
+	Filename    string `json:"filename" validate:"required"`
+	ContentType string `json:"content_type" validate:"required"`
+}
+
+// InitiateMultipartUploadResponse represents the response after starting a multipart upload
+type InitiateMultipartUploadResponse struct {
+	UploadID      string   `json:"upload_id"`
+	Key           string   `json:"key"`
+	PresignedURLs []string `json:"presigned_urls,omitempty"` // For pre-calculating parts if needed
+}
+
+// CompleteMultipartUploadInput represents the request to finalize a multipart upload
+type CompleteMultipartUploadInput struct {
+	UploadID string          `json:"upload_id" validate:"required"`
+	Key      string          `json:"key" validate:"required"`
+	Parts    []CompletedPart `json:"parts" validate:"required"`
+}
+
+// CompletedPart represents a single part of a multipart upload
+type CompletedPart struct {
+	PartNumber int32  `json:"part_number"`
+	ETag       string `json:"etag"`
+}

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"time"
 
 	"go.uber.org/zap"
 
@@ -35,12 +36,20 @@ func main(){
 	frontendUrl := cfg.FRONTEND_URL
 	route := routes.ApiRouter()
 	
-	logger.Log.Info("🚀 Server Listening on ", zap.String("url", "http://localhost:"+port+"/swagger/index.html"))
-	
 	// Apply CORS middleware globally
 	handler := middlewares.CORS(frontendUrl)(route)
 	
-	if  err:= http.ListenAndServe(":"+port, handler); err != nil {
+	server := &http.Server{
+		Addr:         ":" + port,
+		Handler:      handler,
+		ReadTimeout:  5 * time.Minute,
+		WriteTimeout: 5 * time.Minute,
+		IdleTimeout:  10 * time.Minute,
+	}
+
+	logger.Log.Info("🚀 Server Listening on ", zap.String("url", "http://localhost:"+port+"/swagger/index.html"))
+
+	if err := server.ListenAndServe(); err != nil {
 		log.Fatal(err)
 	}
 }

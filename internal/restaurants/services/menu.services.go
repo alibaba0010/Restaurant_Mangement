@@ -12,8 +12,19 @@ import (
 	"github.com/alibaba0010/postgres-api/internal/restaurants/dto"
 	"github.com/alibaba0010/postgres-api/internal/restaurants/models"
 	"github.com/alibaba0010/postgres-api/internal/restaurants/repositories"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/google/uuid"
 )
+
+// generateKey determines duplicate S3 key logic
+func generateKey(s3Service *s3.S3Service, userID, filename, contentType string) string {
+	if strings.HasPrefix(contentType, "video/") {
+		ext := filepath.Ext(filename)
+		return s3Service.GetVideoUploadKey(ext)
+	}
+	return s3Service.GetMenuImageKey(userID, filename)
+}
 
 // GetMenuUploadURL generates a presigned URL for menu media uploads
 func GetMenuUploadURL(ctx context.Context, userID string, filename string, contentType string) (string, string, error) {
@@ -22,13 +33,7 @@ func GetMenuUploadURL(ctx context.Context, userID string, filename string, conte
 		return "", "", err
 	}
 
-	var key string
-	if strings.HasPrefix(contentType, "video/") {
-		ext := filepath.Ext(filename)
-		key = s3Service.GetVideoUploadKey(ext)
-	} else {
-		key = s3Service.GetMenuImageKey(userID, filename)
-	}
+	key := generateKey(s3Service, userID, filename, contentType)
 
 	url, err := s3Service.GenerateUploadURL(ctx, key, contentType)
 	if err != nil {
@@ -48,13 +53,7 @@ func UploadMenuMedia(ctx context.Context, userID string, filename string, conten
 		return "", err
 	}
 
-	var key string
-	if strings.HasPrefix(contentType, "video/") {
-		ext := filepath.Ext(filename)
-		key = s3Service.GetVideoUploadKey(ext)
-	} else {
-		key = s3Service.GetMenuImageKey(userID, filename)
-	}
+	key := generateKey(s3Service, userID, filename, contentType)
 
 	err = s3Service.DirectUpload(ctx, key, body, contentType)
 	if err != nil {
@@ -178,4 +177,53 @@ func MapMenuToResponse(m *models.Menu) *dto.MenuResponse {
 		CreatedAt:       m.CreatedAt.Format(time.RFC3339),
 		UpdatedAt:       m.UpdatedAt.Format(time.RFC3339),
 	}
+}
+
+// InitiateMultipartUpload starts a multipart upload and returns details
+func InitiateMultipartUpload(ctx context.Context, userID, filename, contentType string) (*dto.InitiateMultipartUploadResponse, error) {
+	s3Service, err := s3.NewS3Service()
+	if err != nil {
+		return nil, err
+	}
+
+	key := generateKey(s3Service, userID, filename, contentType)
+
+	uploadID, err := s3Service.InitiateMultipartUpload(ctx, key, contentType)
+	if err != nil {
+		return nil, err
+	}
+
+	return &dto.InitiateMultipartUploadResponse{
+		UploadID: uploadID,
+		Key:      key,
+	}, nil
+}
+
+// GeneratePartPresignedURL generates a presigned URL for a specific part
+func GeneratePartPresignedURL(ctx context.Context, key, uploadID string, partNumber int32) (string, error) {
+	s3Service, err := s3.NewS3Service()
+	if err != nil {
+		return "", err
+	}
+
+	return s3Service.GeneratePresignPartURL(ctx, key, uploadID, partNumber)
+}
+
+// CompleteMultipartUpload completes the multipart upload
+func CompleteMultipartUpload(ctx context.Context, key, uploadID string, parts []dto.CompletedPart) (string, error) {
+	s3Service, err := s3.NewS3Service()
+	if err != nil {
+		return "", err
+	}
+
+	// Convert DTO parts to S3 types
+	s3Parts := make([]types.CompletedPart, len(parts))
+	for i, p := range parts {
+		s3Parts[i] = types.CompletedPart{
+			PartNumber: aws.Int32(p.PartNumber),
+			ETag:       aws.String(p.ETag),
+		}
+	}
+
+	return s3Service.CompleteMultipartUpload(ctx, key, uploadID, s3Parts)
 }

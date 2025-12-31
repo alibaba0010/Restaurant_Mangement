@@ -11,6 +11,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/google/uuid"
 )
 
@@ -67,11 +68,70 @@ func (s *S3Service) GenerateUploadURL(ctx context.Context, key, contentType stri
 // DirectUpload uploads a file directly from an io.Reader to S3.
 // Useful for smaller files or when client-side direct upload is not preferred.
 func (s *S3Service) DirectUpload(ctx context.Context, key string, body io.Reader, contentType string) error {
-	_, err := s.s3Client.PutObject(ctx, &s3.PutObjectInput{
+	// Use a 10-minute timeout for the upload. We don't use the request context directly as the primary
+	// because intermediate proxies (like Next.js rewrites) might time out the request context at 30s.
+	uploadCtx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
+
+	_, err := s.s3Client.PutObject(uploadCtx, &s3.PutObjectInput{
 		Bucket:      aws.String(s.bucket),
 		Key:         aws.String(key),
 		Body:        body,
 		ContentType: aws.String(contentType),
+	})
+	return err
+}
+
+// InitiateMultipartUpload starts a multipart upload and returns the UploadId
+func (s *S3Service) InitiateMultipartUpload(ctx context.Context, key, contentType string) (string, error) {
+	resp, err := s.s3Client.CreateMultipartUpload(ctx, &s3.CreateMultipartUploadInput{
+		Bucket:      aws.String(s.bucket),
+		Key:         aws.String(key),
+		ContentType: aws.String(contentType),
+	})
+	if err != nil {
+		return "", err
+	}
+	return *resp.UploadId, nil
+}
+
+// GeneratePresignPartURL generates a presigned URL for a specific part of a multipart upload
+func (s *S3Service) GeneratePresignPartURL(ctx context.Context, key, uploadID string, partNumber int32) (string, error) {
+	ps := s3.NewPresignClient(s.s3Client)
+	req, err := ps.PresignUploadPart(ctx, &s3.UploadPartInput{
+		Bucket:     aws.String(s.bucket),
+		Key:        aws.String(key),
+		UploadId:   aws.String(uploadID),
+		PartNumber: aws.Int32(partNumber),
+	}, s3.WithPresignExpires(15*time.Minute))
+	if err != nil {
+		return "", err
+	}
+	return req.URL, nil
+}
+
+// CompleteMultipartUpload completes a multipart upload by assembling the parts
+func (s *S3Service) CompleteMultipartUpload(ctx context.Context, key, uploadID string, parts []types.CompletedPart) (string, error) {
+	_, err := s.s3Client.CompleteMultipartUpload(ctx, &s3.CompleteMultipartUploadInput{
+		Bucket:   aws.String(s.bucket),
+		Key:      aws.String(key),
+		UploadId: aws.String(uploadID),
+		MultipartUpload: &types.CompletedMultipartUpload{
+			Parts: parts,
+		},
+	})
+	if err != nil {
+		return "", err
+	}
+	return s.GetCloudFrontURL(key), nil
+}
+
+// AbortMultipartUpload aborts a multipart upload
+func (s *S3Service) AbortMultipartUpload(ctx context.Context, key, uploadID string) error {
+	_, err := s.s3Client.AbortMultipartUpload(ctx, &s3.AbortMultipartUploadInput{
+		Bucket:   aws.String(s.bucket),
+		Key:      aws.String(key),
+		UploadId: aws.String(uploadID),
 	})
 	return err
 }
