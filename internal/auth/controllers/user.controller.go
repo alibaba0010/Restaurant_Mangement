@@ -100,7 +100,7 @@ func GetAllUsersHandler(writer http.ResponseWriter, request *http.Request) {
 }
 
 // UpdateUserRoleHandler updates a user's role (admin only)
-func UpdateUserRoleHandler(writer http.ResponseWriter, request *http.Request) {
+func UpdateUserRoleStatusHandler(writer http.ResponseWriter, request *http.Request) {
 	vars := mux.Vars(request)
 	userID := vars["id"]
 
@@ -110,7 +110,7 @@ func UpdateUserRoleHandler(writer http.ResponseWriter, request *http.Request) {
 		return
 	}
 
-	response, appErr := services.UpdateUserRole(request.Context(), userID, input)
+	response, appErr := services.UpdateUserRoleStatus(request.Context(), userID, input)
 	if appErr != nil {
 		errors.ErrorResponse(writer, request, appErr)
 		return

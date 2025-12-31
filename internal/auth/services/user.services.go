@@ -224,7 +224,7 @@ func GetUserByIDPublic(ctx context.Context, userID string) (*models.User, *error
 }
 
 // UpdateUserRole updates a user's role (admin only)
-func UpdateUserRole(ctx context.Context, userID string, input dto.UpdateUserRoleInput) (*dto.UpdateUserResponse, *errors.AppError) {
+func UpdateUserRoleStatus(ctx context.Context, userID string, input dto.UpdateUserRoleInput) (*dto.UpdateUserResponse, *errors.AppError) {
 	// Validate input
 	validate := validator.New()
 	if err := validate.Struct(input); err != nil {
@@ -275,7 +275,7 @@ func UpdateUserRole(ctx context.Context, userID string, input dto.UpdateUserRole
 	}
 
 	return &dto.UpdateUserResponse{
-		Title: "Success",
+		Title: "Updated User Successfully",
 		Data:  mapToCurrentUserResponse(user),
 	}, nil
 }
