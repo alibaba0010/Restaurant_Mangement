@@ -14,7 +14,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
-	"github.com/aws/aws-sdk-go-v2/service/s3/types"
+	// "github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/google/uuid"
 )
 
@@ -71,7 +71,7 @@ func (s *S3Service) UploadFile(file multipart.File, fileHeader *multipart.FileHe
 		Body:          bytes.NewReader(buffer),
 		ContentLength: aws.Int64(size),
 		ContentType:   aws.String(contentType),
-		ACL:           types.ObjectCannedACLPublicRead,
+		// ACL:           types.ObjectCannedACLPublicRead,
 	})
 
 	if err != nil {

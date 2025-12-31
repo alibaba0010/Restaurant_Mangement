@@ -156,8 +156,8 @@ func ResendVerificationHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	utils.WriteJSON(w, http.StatusOK, dto.MessageResponse{
-		Title:   "Success",
-		Message: "Verification email resent",
+		Title:   "Email Resend",
+		Message: "Verification email sent successfully",
 	})
 }
 
@@ -195,7 +195,7 @@ func RefreshTokenHandler(writer http.ResponseWriter, request *http.Request) {
 
 	// Return new access token in body
 	utils.WriteJSON(writer, http.StatusOK, dto.MessageResponse{
-		Title:       "Success",
+		Title:       "Token Refresh",
 		Message:     "Token refreshed successfully",
 		AccessToken: newTokenPair.AccessToken,
 	})
@@ -224,7 +224,7 @@ func LogoutHandler(writer http.ResponseWriter, request *http.Request) {
 	utils.ClearRefreshTokenCookie(writer, isSecure)
 
 	utils.WriteJSON(writer, http.StatusOK, dto.LogoutResponse{
-		Title:   "Success",
+		Title:   "User Logout",
 		Message: "You have been successfully logged out",
 	})
 }
@@ -363,7 +363,7 @@ func ForgotPasswordHandler(writer http.ResponseWriter, request *http.Request) {
 
 	// Always return success to avoid email enumeration
 	utils.WriteJSON(writer, http.StatusOK, dto.MessageResponse{
-		Title:   "Success",
+		Title:   "Password Reset",
 		Message: "A password reset link has been sent to your email",
 	})
 }
@@ -397,7 +397,7 @@ func ResetPasswordHandler(writer http.ResponseWriter, request *http.Request) {
 	}
 
 	utils.WriteJSON(writer, http.StatusOK, dto.MessageResponse{
-		Title:   "Success",
+		Title:   "Password Reset",
 		Message: "Your password has been reset successfully. Please login with your new password",
 	})
 }

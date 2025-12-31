@@ -1,5 +1,7 @@
 package dto
 
+import commondto "github.com/alibaba0010/postgres-api/internal/common/dto"
+
 // CreateMenuInput represents the input for creating a menu item
 type CreateMenuInput struct {
 	Name            string   `json:"name" validate:"required"`
@@ -44,5 +46,5 @@ type MenuResponse struct {
 // MenusListResponse represents the list of menus
 type MenusListResponse struct {
 	Data []MenuResponse `json:"data"`
-	Meta PaginationMeta `json:"meta"`
+	Meta commondto.PaginationMeta `json:"meta"`
 }

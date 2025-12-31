@@ -3,8 +3,8 @@ package controllers
 import (
 	"encoding/json"
 	"net/http"
-	"strconv"
 
+	commondto "github.com/alibaba0010/postgres-api/internal/common/dto"
 	"github.com/alibaba0010/postgres-api/internal/common/errors"
 	"github.com/alibaba0010/postgres-api/internal/common/guards"
 	"github.com/alibaba0010/postgres-api/internal/common/types"
@@ -34,7 +34,7 @@ func CreateRestaurantHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	utils.WriteJSON(w, http.StatusCreated, map[string]interface{}{
-		"title": "Success",
+		"title": "Created Restaurant Successfully",
 		"data":  resp,
 	})
 }
@@ -66,31 +66,15 @@ func GetRestaurantHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	utils.WriteJSON(w, http.StatusOK, map[string]interface{}{
-		"title": "Success",
+		"title": "Retrieved Restaurant Successfully",
 		"data":  resp,
 	})
 }
 
 // ListRestaurantsHandler lists restaurants with pagination
 func ListRestaurantsHandler(w http.ResponseWriter, r *http.Request) {
-	q := r.URL.Query()
+	params := utils.ParseListParams(r)
 
-	page := 1
-	if p := q.Get("page"); p != "" {
-		if v, err := strconv.Atoi(p); err == nil && v > 0 {
-			page = v
-		}
-	}
-
-	pageSize := 20
-	if ps := q.Get("page_size"); ps != "" {
-		if v, err := strconv.Atoi(ps); err == nil && v > 0 {
-			pageSize = v
-		}
-	}
-
-	search := q.Get("q")
-	
 	// Filter logic based on user role
 	var filterUserID *string
 	if user := guards.ExtractAuthenticatedUser(r); user != nil {
@@ -100,34 +84,24 @@ func ListRestaurantsHandler(w http.ResponseWriter, r *http.Request) {
 			filterUserID = &user.UserID
 		case types.RoleAdmin:
 			// Admin -> All restaurants (no userID filter)
-		default:
-			errors.ErrorResponse(w, r, errors.UnauthorizedError("Unauthorized access"))
-			return
 		}
 	}
 
-	data, total, err := services.GetAllRestaurants(r.Context(), page, pageSize, search, filterUserID)
+	data, total, err := services.GetAllRestaurants(r.Context(), params.Page, params.PageSize, params.Query, filterUserID, params.SortBy, params.Order)
 	if err != nil {
 		errors.ErrorResponse(w, r, err)
 		return
 	}
 
-	totalPages := 0
-	if pageSize > 0 {
-		totalPages = int((total + int64(pageSize) - 1) / int64(pageSize))
-	}
-
-	meta := dto.PaginationMeta{
-		Page:       page,
-		PageSize:   pageSize,
-		Total:      total,
-		TotalPages: totalPages,
-	}
-
 	utils.WriteJSON(w, http.StatusOK, dto.RestaurantsListResponse{
-		Title: "Success",
+		Title: "Restaurants retrieved successfully",
 		Data:  data,
-		Meta:  meta,
+		Meta: commondto.PaginationMeta{
+			Page:       params.Page,
+			PageSize:   params.PageSize,
+			Total:      total,
+			TotalPages: utils.CalculateTotalPages(total, params.PageSize),
+		},
 	})
 }
 
@@ -155,7 +129,8 @@ func UpdateRestaurantHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if user.Role == types.RoleManagement {
+	switch user.Role {
+case types.RoleManagement:
 		// Check ownership
 		if existing.UserID == nil || *existing.UserID != user.UserID {
 			errors.ErrorResponse(w, r, errors.ForbiddenError("You do not have permission to update this restaurant"))
@@ -167,9 +142,9 @@ func UpdateRestaurantHandler(w http.ResponseWriter, r *http.Request) {
 		// This implies they CANNOT update status.
 		// We explicitly ignore/clear status if management
 		input.Status = "" 
-	} else if user.Role == types.RoleAdmin {
+	case types.RoleAdmin:
 		// Admin can update status, so we leave it
-	} else {
+	default:
 		// Other roles? Assume forbidden if not admin/management caught by middleware, 
 		// but explicit check is safer
 		errors.ErrorResponse(w, r, errors.ForbiddenError("You do not have permission"))
@@ -183,7 +158,7 @@ func UpdateRestaurantHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	utils.WriteJSON(w, http.StatusOK, map[string]interface{}{
-		"title": "Success",
+		"title": "Updated Restaurant Successfully",
 		"data":  resp,
 	})
 }

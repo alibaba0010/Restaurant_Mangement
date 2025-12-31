@@ -1,5 +1,7 @@
 package dto
 
+import commondto "github.com/alibaba0010/postgres-api/internal/common/dto"
+
 // CreateRestaurantInput represents the input for creating a restaurant
 type CreateRestaurantInput struct {
 	Name              string  `json:"name" validate:"required,min=2,max=100"`
@@ -44,17 +46,9 @@ type RestaurantResponse struct {
 	UpdatedAt         string  `json:"updated_at"`
 }
 
-// PaginationMeta provides pagination details
-type PaginationMeta struct {
-	Page       int   `json:"page"`
-	PageSize   int   `json:"page_size"`
-	Total      int64 `json:"total"`
-	TotalPages int   `json:"total_pages"`
-}
-
 // RestaurantsListResponse is the response for listing restaurants
 type RestaurantsListResponse struct {
 	Title string               `json:"title"`
 	Data  []RestaurantResponse `json:"data"`
-	Meta  PaginationMeta       `json:"meta"`
+	Meta  commondto.PaginationMeta       `json:"meta"`
 }

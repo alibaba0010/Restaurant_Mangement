@@ -32,22 +32,7 @@ type AuthenticatedUser struct {
 // On fail: returns 401 with specific error (expired vs invalid)
 func AuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		tokenString := ""
-		authHeader := request.Header.Get("Authorization")
-		if authHeader != "" {
-			parts := strings.SplitN(authHeader, " ", 2)
-			if len(parts) == 2 && parts[0] == "Bearer" {
-				tokenString = parts[1]
-			}
-		}
-
-		// Fallback to cookie
-		if tokenString == "" {
-			cookie, err := request.Cookie("access_token")
-			if err == nil {
-				tokenString = cookie.Value
-			}
-		}
+		tokenString := extractToken(request)
 
 		if tokenString == "" {
 			errors.ErrorResponse(writer, request, errors.UnauthorizedError("authentication required"))
@@ -63,6 +48,45 @@ func AuthMiddleware(next http.Handler) http.Handler {
 
 		errors.ErrorResponse(writer, request, appErr)
 	})
+}
+
+// OptionalAuthMiddleware attempts to validate access token but proceeds even if missing or invalid.
+// Claims are stored in context ONLY if the token is valid.
+func OptionalAuthMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		tokenString := extractToken(request)
+
+		if tokenString != "" {
+			claims, appErr := services.VerifyAccessToken(tokenString)
+			if appErr == nil {
+				ctx := context.WithValue(request.Context(), UserClaimsKey, claims)
+				next.ServeHTTP(writer, request.WithContext(ctx))
+				return
+			}
+		}
+
+		next.ServeHTTP(writer, request)
+	})
+}
+
+func extractToken(request *http.Request) string {
+	tokenString := ""
+	authHeader := request.Header.Get("Authorization")
+	if authHeader != "" {
+		parts := strings.SplitN(authHeader, " ", 2)
+		if len(parts) == 2 && parts[0] == "Bearer" {
+			tokenString = parts[1]
+		}
+	}
+
+	// Fallback to cookie
+	if tokenString == "" {
+		cookie, err := request.Cookie("access_token")
+		if err == nil {
+			tokenString = cookie.Value
+		}
+	}
+	return tokenString
 }
 
 // ExtractAuthenticatedUser extracts user claims from context (set by AuthMiddleware)

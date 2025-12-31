@@ -2,6 +2,8 @@ package utils
 
 import (
 	"crypto/rand"
+	"strconv"
+
 	// "encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -141,10 +143,80 @@ func ClearAccessTokenCookie(writer http.ResponseWriter, isSecure bool) {
 	}
 	http.SetCookie(writer, cookie)
 }
-// writeJSON writes a JSON response with the provided status code.
-// Keeps handlers compact and consistent.
+// WriteJSON writes a JSON response with the provided status code.
 func WriteJSON(writer http.ResponseWriter, status int, v any) {
 	writer.Header().Set("Content-Type", "application/json")
 	writer.WriteHeader(status)
-	_ = json.NewEncoder(writer).Encode(v)
+	if err := json.NewEncoder(writer).Encode(v); err != nil {
+		logger.Log.Error("failed to encode JSON response", zap.Error(err))
+	}
+}
+
+func CalculateTotalPages(total int64, pageSize int) int {
+	if pageSize <= 0 {
+		return 0
+	}
+	return int((total + int64(pageSize) - 1) / int64(pageSize))
+}
+
+func ParseFloat(value string, defaultValue float64) float64 {
+	parsed, err := strconv.ParseFloat(value, 64)
+	if err != nil {
+		return defaultValue
+	}
+	return parsed
+}
+
+func ParseInt(value string, defaultValue int) int {
+	parsed, err := strconv.Atoi(value)
+	if err != nil {
+		return defaultValue
+	}
+	return parsed
+}
+
+// SanitizeSort validates and cleans sort parameters to prevent SQL injection and ensure valid defaults.
+func SanitizeSort(sortBy, order string, allowedFields []string, defaultField string) (string, string) {
+	sortBy = strings.ToLower(sortBy)
+	order = strings.ToUpper(order)
+
+	validField := false
+	for _, field := range allowedFields {
+		if sortBy == strings.ToLower(field) {
+			sortBy = field // Use the exact field name from whitelist
+			validField = true
+			break
+		}
+	}
+
+	if !validField {
+		sortBy = defaultField
+	}
+
+	if order != "ASC" && order != "DESC" {
+		order = "DESC"
+	}
+
+	return sortBy, order
+}
+
+// ListParams holds common query parameters for listing endpoints
+type ListParams struct {
+	Page     int
+	PageSize int
+	Query    string
+	SortBy   string
+	Order    string
+}
+
+// ParseListParams extracts common query parameters from the request
+func ParseListParams(r *http.Request) ListParams {
+	q := r.URL.Query()
+	return ListParams{
+		Page:     ParseInt(q.Get("page"), 1),
+		PageSize: ParseInt(q.Get("page_size"), 20),
+		Query:    q.Get("q"),
+		SortBy:   q.Get("sort_by"),
+		Order:    q.Get("order"),
+	}
 }

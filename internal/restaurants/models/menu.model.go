@@ -14,7 +14,7 @@ type Menu struct {
 	Name            string    `bun:",notnull" json:"name"`
 	Description     string    `bun:",nullzero" json:"description,omitempty"`
 	Price           float64   `bun:",notnull" json:"price"`
-	ImageURLs       []string  `bun:"type:jsonb" json:"image_urls"`
+	ImageURLs       []string  `bun:"image_urls,type:jsonb" json:"image_urls"`
 	VideoURL        string    `bun:",nullzero" json:"video_url,omitempty"`
 	RestaurantID    uuid.UUID `bun:"type:uuid,notnull" json:"restaurant_id"`
 	IsAvailable     bool      `bun:",default:true" json:"is_available"`

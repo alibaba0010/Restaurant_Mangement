@@ -163,6 +163,59 @@ const definitions = `
 				"data": { "type": "array", "items": { "$ref": "#/definitions/Restaurant" } },
 				"meta": { "$ref": "#/definitions/PaginationMeta" }
 			}
+		},
+		"MenuResponse": {
+			"type": "object",
+			"properties": {
+				"id": { "type": "string", "format": "uuid" },
+				"name": { "type": "string" },
+				"description": { "type": "string" },
+				"price": { "type": "number", "format": "float" },
+				"image_urls": { "type": "array", "items": { "type": "string" } },
+				"video_url": { "type": "string" },
+				"restaurant_id": { "type": "string", "format": "uuid" },
+				"is_available": { "type": "boolean" },
+				"prep_time_minutes": { "type": "integer" },
+				"calories": { "type": "integer" },
+				"created_at": { "type": "string", "format": "date-time" },
+				"updated_at": { "type": "string", "format": "date-time" }
+			}
+		},
+		"CreateMenuInput": {
+			"type": "object",
+			"properties": {
+				"name": { "type": "string", "minLength": 2 },
+				"description": { "type": "string" },
+				"price": { "type": "number" },
+				"image_urls": { "type": "array", "items": { "type": "string" } },
+				"video_url": { "type": "string" },
+				"restaurant_id": { "type": "string", "format": "uuid" },
+				"is_available": { "type": "boolean" },
+				"prep_time_minutes": { "type": "integer" },
+				"calories": { "type": "integer" }
+			},
+			"required": ["name", "price", "restaurant_id"]
+		},
+		"UpdateMenuInput": {
+			"type": "object",
+			"properties": {
+				"name": { "type": "string" },
+				"description": { "type": "string" },
+				"price": { "type": "number" },
+				"image_urls": { "type": "array", "items": { "type": "string" } },
+				"video_url": { "type": "string" },
+				"is_available": { "type": "boolean" },
+				"prep_time_minutes": { "type": "integer" },
+				"calories": { "type": "integer" }
+			}
+		},
+		"MenusListResponse": {
+			"type": "object",
+			"properties": {
+				"title": { "type": "string" },
+				"data": { "type": "array", "items": { "$ref": "#/definitions/MenuResponse" } },
+				"meta": { "$ref": "#/definitions/PaginationMeta" }
+			}
 		}
 	}
 

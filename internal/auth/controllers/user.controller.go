@@ -3,10 +3,10 @@ package controllers
 import (
 	"encoding/json"
 	"net/http"
-	"strconv"
 
 	"github.com/alibaba0010/postgres-api/internal/auth/dto"
 	"github.com/alibaba0010/postgres-api/internal/auth/services"
+	commondto "github.com/alibaba0010/postgres-api/internal/common/dto"
 	"github.com/alibaba0010/postgres-api/internal/common/errors"
 	"github.com/alibaba0010/postgres-api/internal/common/guards"
 	"github.com/alibaba0010/postgres-api/internal/utils"
@@ -76,47 +76,23 @@ func UpdateUserHandler(writer http.ResponseWriter, request *http.Request) {
 
 // GetAllUsersHandler returns a paginated list of users (admin only)
 func GetAllUsersHandler(writer http.ResponseWriter, request *http.Request) {
-	// parse query params
-	q := request.URL.Query()
+	params := utils.ParseListParams(request)
+	role := request.URL.Query().Get("role")
 
-	page := 1
-	if p := q.Get("page"); p != "" {
-		if v, err := strconv.Atoi(p); err == nil && v > 0 {
-			page = v
-		}
-	}
-
-	pageSize := 20
-	if ps := q.Get("page_size"); ps != "" {
-		if v, err := strconv.Atoi(ps); err == nil && v > 0 {
-			pageSize = v
-		}
-	}
-
-	search := q.Get("q")
-	role := q.Get("role")
-	sortBy := q.Get("sort_by")
-	order := q.Get("order")
-
-	users, total, appErr := services.GetAllUsers(request.Context(), page, pageSize, search, role, sortBy, order)
+	users, total, appErr := services.GetAllUsers(request.Context(), params.Page, params.PageSize, params.Query, role, params.SortBy, params.Order)
 	if appErr != nil {
 		errors.ErrorResponse(writer, request, appErr)
 		return
 	}
 
-	totalPages := 0
-	if pageSize > 0 {
-		totalPages = int((total + int64(pageSize) - 1) / int64(pageSize))
-	}
-
 	resp := dto.UsersListResponse{
-		Title: "Success",
+		Title: "Users retrieved successfully",
 		Data:  users,
-		Meta: dto.PaginationMeta{
-			Page:       page,
-			PageSize:   pageSize,
+		Meta: commondto.PaginationMeta{
+			Page:       params.Page,
+			PageSize:   params.PageSize,
 			Total:      total,
-			TotalPages: totalPages,
+			TotalPages: utils.CalculateTotalPages(total, params.PageSize),
 		},
 	}
 
@@ -142,4 +118,3 @@ func UpdateUserRoleHandler(writer http.ResponseWriter, request *http.Request) {
 
 	utils.WriteJSON(writer, http.StatusOK, response)
 }
-

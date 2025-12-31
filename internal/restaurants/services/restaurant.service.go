@@ -6,9 +6,9 @@ import (
 
 	"github.com/alibaba0010/postgres-api/internal/common/errors"
 	"github.com/alibaba0010/postgres-api/internal/common/logger"
-	"github.com/alibaba0010/postgres-api/internal/database"
 	"github.com/alibaba0010/postgres-api/internal/restaurants/dto"
 	"github.com/alibaba0010/postgres-api/internal/restaurants/models"
+	"github.com/alibaba0010/postgres-api/internal/restaurants/repositories"
 	"github.com/alibaba0010/postgres-api/internal/utils"
 	"go.uber.org/zap"
 )
@@ -51,68 +51,27 @@ func CreateRestaurant(ctx context.Context, input dto.CreateRestaurantInput) (*dt
 		restaurant.TakeawayAvailable = *input.TakeawayAvailable
 	}
 
-	_, err = database.DB.NewInsert().Model(restaurant).Exec(ctx)
+	err = repositories.RestaurantRepo.Create(ctx, restaurant)
 	if err != nil {
 		logger.Log.Error("failed to create restaurant", zap.Error(err))
 		return nil, errors.InternalError(err)
 	}
 
-	var userIDStr *string
-	if restaurant.UserID != nil {
-		idStr := restaurant.UserID.String()
-		userIDStr = &idStr
-	}
-
-	return &dto.RestaurantResponse{
-		ID:                restaurant.ID.String(),
-		Name:              restaurant.Name,
-		Description:       restaurant.Description,
-		Address:           restaurant.Address,
-		AvatarURL:         restaurant.AvatarURL,
-		Status:            string(restaurant.Status),
-		UserID:            userIDStr,
-		Capacity:          restaurant.Capacity,
-		DeliveryAvailable: restaurant.DeliveryAvailable,
-		TakeawayAvailable: restaurant.TakeawayAvailable,
-		Rating:            restaurant.Rating,
-		CreatedAt:         restaurant.CreatedAt.Format(time.RFC3339),
-		UpdatedAt:         restaurant.UpdatedAt.Format(time.RFC3339),
-	}, nil
+	return MapRestaurantToResponse(restaurant), nil
 }
 
 // GetRestaurantByID retrieves a restaurant by ID
 func GetRestaurantByID(ctx context.Context, id string) (*dto.RestaurantResponse, *errors.AppError) {
-	restaurant := &models.Restaurant{}
-	err := database.DB.NewSelect().Model(restaurant).Where("id = ?", id).Scan(ctx)
+	restaurant, err := repositories.RestaurantRepo.FindByID(ctx, id)
 	if err != nil {
 		return nil, errors.NotFoundError("restaurant not found")
 	}
 
-	var userIDStr *string
-	if restaurant.UserID != nil {
-		idStr := restaurant.UserID.String()
-		userIDStr = &idStr
-	}
-
-	return &dto.RestaurantResponse{
-		ID:                restaurant.ID.String(),
-		Name:              restaurant.Name,
-		Description:       restaurant.Description,
-		Address:           restaurant.Address,
-		AvatarURL:         restaurant.AvatarURL,
-		Status:            string(restaurant.Status),
-		UserID:            userIDStr,
-		Capacity:          restaurant.Capacity,
-		DeliveryAvailable: restaurant.DeliveryAvailable,
-		TakeawayAvailable: restaurant.TakeawayAvailable,
-		Rating:            restaurant.Rating,
-		CreatedAt:         restaurant.CreatedAt.Format(time.RFC3339),
-		UpdatedAt:         restaurant.UpdatedAt.Format(time.RFC3339),
-	}, nil
+	return MapRestaurantToResponse(restaurant), nil
 }
 
 // GetAllRestaurants retrieves a paginated list of restaurants
-func GetAllRestaurants(ctx context.Context, page, pageSize int, qStr string, userID *string) ([]dto.RestaurantResponse, int64, *errors.AppError) {
+func GetAllRestaurants(ctx context.Context, page, pageSize int, qStr string, userID *string, sortBy, order string) ([]dto.RestaurantResponse, int64, *errors.AppError) {
 	if page <= 0 {
 		page = 1
 	}
@@ -120,72 +79,23 @@ func GetAllRestaurants(ctx context.Context, page, pageSize int, qStr string, use
 		pageSize = 20
 	}
 
-	restaurants := make([]models.Restaurant, 0)
-	query := database.DB.NewSelect().Model(&restaurants)
-
-	if qStr != "" {
-		like := "%" + qStr + "%"
-		query = query.Where("name ILIKE ? OR description ILIKE ?", like, like)
-	}
-
-	if userID != nil {
-		query = query.Where("user_id = ?", *userID)
-	}
-
-	// Count total
-	countQuery := database.DB.NewSelect().Model((*models.Restaurant)(nil))
-	if qStr != "" {
-		like := "%" + qStr + "%"
-		countQuery = countQuery.Where("name ILIKE ? OR description ILIKE ?", like, like)
-	}
-	if userID != nil {
-		countQuery = countQuery.Where("user_id = ?", *userID)
-	}
-	total, err := countQuery.Count(ctx)
+	restaurants, total, err := repositories.RestaurantRepo.FindAll(ctx, page, pageSize, qStr, userID, sortBy, order)
 	if err != nil {
-		return nil, 0, errors.InternalError(err)
-	}
-
-	// Paginate
-	query = query.Limit(pageSize).Offset((page - 1) * pageSize).Order("created_at DESC")
-
-	if err := query.Scan(ctx); err != nil {
 		return nil, 0, errors.InternalError(err)
 	}
 
 	// Map to DTO
 	responses := make([]dto.RestaurantResponse, len(restaurants))
 	for i, r := range restaurants {
-		var userIDStr *string
-		if r.UserID != nil {
-			idStr := r.UserID.String()
-			userIDStr = &idStr
-		}
-
-		responses[i] = dto.RestaurantResponse{
-			ID:                r.ID.String(),
-			Name:              r.Name,
-			Description:       r.Description,
-			Address:           r.Address,
-			AvatarURL:         r.AvatarURL,
-			Status:            string(r.Status),
-			UserID:            userIDStr,
-			Capacity:          r.Capacity,
-			DeliveryAvailable: r.DeliveryAvailable,
-			TakeawayAvailable: r.TakeawayAvailable,
-			Rating:            r.Rating,
-			CreatedAt:         r.CreatedAt.Format(time.RFC3339),
-			UpdatedAt:         r.UpdatedAt.Format(time.RFC3339),
-		}
+		responses[i] = *MapRestaurantToResponse(&r)
 	}
 
-	return responses, int64(total), nil
+	return responses, total, nil
 }
 
 // UpdateRestaurant updates an existing restaurant
 func UpdateRestaurant(ctx context.Context, id string, input dto.UpdateRestaurantInput) (*dto.RestaurantResponse, *errors.AppError) {
-	restaurant := &models.Restaurant{}
-	err := database.DB.NewSelect().Model(restaurant).Where("id = ?", id).Scan(ctx)
+	restaurant, err := repositories.RestaurantRepo.FindByID(ctx, id)
 	if err != nil {
 		return nil, errors.NotFoundError("restaurant not found")
 	}
@@ -223,32 +133,35 @@ func UpdateRestaurant(ctx context.Context, id string, input dto.UpdateRestaurant
 	if input.Rating != nil {
 		restaurant.Rating = *input.Rating
 	}
-	restaurant.UpdatedAt = time.Now()
 
-	_, err = database.DB.NewUpdate().Model(restaurant).Where("id = ?", id).Exec(ctx)
+	err = repositories.RestaurantRepo.Update(ctx, restaurant)
 	if err != nil {
 		return nil, errors.InternalError(err)
 	}
 
+	return MapRestaurantToResponse(restaurant), nil
+}
+
+func MapRestaurantToResponse(r *models.Restaurant) *dto.RestaurantResponse {
 	var userIDStr *string
-	if restaurant.UserID != nil {
-		idStr := restaurant.UserID.String()
+	if r.UserID != nil {
+		idStr := r.UserID.String()
 		userIDStr = &idStr
 	}
 
 	return &dto.RestaurantResponse{
-		ID:                restaurant.ID.String(),
-		Name:              restaurant.Name,
-		Description:       restaurant.Description,
-		Address:           restaurant.Address,
-		AvatarURL:         restaurant.AvatarURL,
-		Status:            string(restaurant.Status),
+		ID:                r.ID.String(),
+		Name:              r.Name,
+		Description:       r.Description,
+		Address:           r.Address,
+		AvatarURL:         r.AvatarURL,
+		Status:            string(r.Status),
 		UserID:            userIDStr,
-		Capacity:          restaurant.Capacity,
-		DeliveryAvailable: restaurant.DeliveryAvailable,
-		TakeawayAvailable: restaurant.TakeawayAvailable,
-		Rating:            restaurant.Rating,
-		CreatedAt:         restaurant.CreatedAt.Format(time.RFC3339),
-		UpdatedAt:         restaurant.UpdatedAt.Format(time.RFC3339),
-	}, nil
+		Capacity:          r.Capacity,
+		DeliveryAvailable: r.DeliveryAvailable,
+		TakeawayAvailable: r.TakeawayAvailable,
+		Rating:            r.Rating,
+		CreatedAt:         r.CreatedAt.Format(time.RFC3339),
+		UpdatedAt:         r.UpdatedAt.Format(time.RFC3339),
+	}
 }

@@ -37,7 +37,7 @@ const docTemplate = `{
       "description": "Enter the token with the Bearer prefix, e.g. 'Bearer abcde12345'"
     }
   },
-  "paths": {` + systemPaths + authPaths + usersPaths + restaurantsPaths + `},` + definitions + `,` + tags + `}`
+  "paths": {` + systemPaths + authPaths + usersPaths + restaurantsPaths + menusPaths + `},` + definitions + `,` + tags + `}`
 
 // SwaggerInfo holds exported Swagger Info so clients can modify it
 var SwaggerInfo = &swag.Spec{
