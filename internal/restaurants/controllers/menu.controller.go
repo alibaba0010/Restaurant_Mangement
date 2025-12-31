@@ -17,10 +17,61 @@ import (
 	"github.com/gorilla/mux"
 )
 
-// UploadMenuMediaHandler handles the upload of menu images/videos
+// GetMenuUploadURLHandler handles the request for a presigned URL for menu media uploads
+func GetMenuUploadURLHandler(writer http.ResponseWriter, request *http.Request) {
+	filename := request.URL.Query().Get("filename")
+	contentType := request.URL.Query().Get("content_type")
+
+	if filename == "" || contentType == "" {
+		errors.ErrorResponse(writer, request, errors.ValidationError("filename and content_type are required"))
+		return
+	}
+
+	user := guards.ExtractAuthenticatedUser(request)
+	if user == nil {
+		errors.ErrorResponse(writer, request, errors.UnauthorizedError("Authentication required"))
+		return
+	}
+
+	// Basic type validation
+	if !isValidMediaType(filename) {
+		errors.ErrorResponse(writer, request, errors.ValidationError("Invalid file type"))
+		return
+	}
+
+	uploadURL, publicURL, err := services.GetMenuUploadURL(request.Context(), user.UserID, filename, contentType)
+	if err != nil {
+		errors.ErrorResponse(writer, request, errors.InternalError(err))
+		return
+	}
+
+	utils.WriteJSON(writer, http.StatusOK, map[string]interface{}{
+		"title": "Presigned URL generated successfully",
+		"data": map[string]string{
+			"upload_url": uploadURL,
+			"public_url": publicURL,
+		},
+	})
+}
+
+// isValidMediaType checks if the file extension is allowed
+func isValidMediaType(filename string) bool {
+	ext := strings.ToLower(filepath.Ext(filename))
+	validExts := map[string]bool{
+		".jpg": true, ".jpeg": true, ".png": true, ".webp": true,
+		".mp4": true, ".mov": true, ".avi": true,
+	}
+	return validExts[ext]
+}
+
+// UploadMenuMediaHandler handles direct media upload (Multipart Form)
 func UploadMenuMediaHandler(writer http.ResponseWriter, request *http.Request) {
-	// Limit 50MB
-	request.ParseMultipartForm(50 << 20)
+	// Parse the multipart form (max 50MB)
+	err := request.ParseMultipartForm(50 << 20)
+	if err != nil {
+		errors.ErrorResponse(writer, request, errors.ValidationError("File too large or invalid form"))
+		return
+	}
 
 	file, header, err := request.FormFile("file")
 	if err != nil {
@@ -29,31 +80,34 @@ func UploadMenuMediaHandler(writer http.ResponseWriter, request *http.Request) {
 	}
 	defer file.Close()
 
-	// Basic type validation
-	ext := strings.ToLower(filepath.Ext(header.Filename))
-	validExts := map[string]bool{
-		".jpg": true, ".jpeg": true, ".png": true, ".webp": true,
-		".mp4": true, ".mov": true, ".avi": true,
-	}
-	if !validExts[ext] {
+	if !isValidMediaType(header.Filename) {
 		errors.ErrorResponse(writer, request, errors.ValidationError("Invalid file type"))
 		return
 	}
 
-	url, err := services.UploadMenuMedia(file, header)
-	if err != nil {
-		// Log error if needed, but return generic internal error
-		errors.ErrorResponse(writer, request, errors.InternalError(err))
+	user := guards.ExtractAuthenticatedUser(request)
+	if user == nil {
+		errors.ErrorResponse(writer, request, errors.UnauthorizedError("Authentication required"))
 		return
 	}
 
-	utils.WriteJSON(writer, http.StatusOK, map[string]interface{}{
-		"title": "File uploaded successfully",
+	contentType := header.Header.Get("Content-Type")
+	filename := header.Filename
+
+	publicURL, appErr := services.UploadMenuMedia(request.Context(), user.UserID, filename, contentType, file)
+	if appErr != nil {
+		errors.ErrorResponse(writer, request, errors.InternalError(appErr))
+		return
+	}
+
+	utils.WriteJSON(writer, http.StatusOK, map[string]any{
+		"title": "Upload successful",
 		"data": map[string]string{
-			"url": url,
+			"url": publicURL,
 		},
 	})
 }
+
 
 // verifyRestaurantOwnership checks if the user owns the restaurant
 func verifyRestaurantOwnership(ctx context.Context, restaurantID string, userID string) *errors.AppError {

@@ -12,6 +12,8 @@ A robust REST API built with Go, featuring PostgreSQL integration, structured lo
 - **Error Handling**: Centralized error handling system
 - **Middleware Support**: Authentication and logging middleware
 - **Redis Cache**: Redis integration for caching (optional)
+- **AWS S3 Integration**: High-performance media uploads using Presigned URLs for low-latency direct client uploads, with a robust Go server fallback.
+- **CloudFront Content Delivery**: Optimized serving of menu images and videos.
 
 ## 📋 Prerequisites
 
@@ -44,6 +46,13 @@ DB_USERNAME=your_username
 DB_PASSWORD=your_password
 DB_NAME=your_database_name
 PORT=your_app_port
+
+# AWS Configuration
+AWS_ACCESS_KEY_ID=your_access_key
+AWS_SECRET_ACCESS_KEY=your_secret_key
+AWS_REGION=your_region
+AWS_BUCKET_NAME=your_bucket_name
+AWS_CLOUDFRONT_DOMAIN=your_cloudfront_domain.cloudfront.net
 ```
 
 ## 🏃‍♂️ Running the Application

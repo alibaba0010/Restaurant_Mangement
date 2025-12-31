@@ -43,6 +43,7 @@ type Config struct {
 	AWS_SECRET_ACCESS_KEY   string
 	AWS_REGION              string
 	AWS_BUCKET_NAME         string
+	AWS_CLOUDFRONT_DOMAIN   string
 }
 
 func LoadConfig() Config {
@@ -80,6 +81,7 @@ func LoadConfig() Config {
 			AWS_SECRET_ACCESS_KEY:   getEnv("AWS_SECRET_ACCESS_KEY", ""),
 			AWS_REGION:              getEnv("AWS_REGION", "us-east-1"),
 			AWS_BUCKET_NAME:         getEnv("AWS_BUCKET_NAME", ""),
+			AWS_CLOUDFRONT_DOMAIN:   getEnv("AWS_CLOUDFRONT_DOMAIN", ""),
 		}
 	})
 	return cfg

@@ -28,6 +28,9 @@ func MenuRoutes(route *mux.Router) {
 	// Update Menu (PUT/PATCH /menus/{id})
 	menus.Handle("/{id}", guards.AuthMiddleware(guards.RequireRole("management")(http.HandlerFunc(controllers.UpdateMenuHandler)))).Methods("PUT", "PATCH")
 
-	// Upload Media (POST /menus/upload)
+	// Get Upload URL (GET /menus/upload-url)
+	menus.Handle("/upload-url", guards.AuthMiddleware(guards.RequireRole("management")(http.HandlerFunc(controllers.GetMenuUploadURLHandler)))).Methods("GET")
+
+	// Direct Upload (POST /menus/upload)
 	menus.Handle("/upload", guards.AuthMiddleware(guards.RequireRole("management")(http.HandlerFunc(controllers.UploadMenuMediaHandler)))).Methods("POST")
 }

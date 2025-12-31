@@ -1,12 +1,9 @@
 package s3
 
 import (
-	"bytes"
 	"context"
 	"fmt"
-	"mime/multipart"
-	"net/http"
-	"path/filepath"
+	"io"
 	"time"
 
 	envConfig "github.com/alibaba0010/postgres-api/internal/config"
@@ -14,7 +11,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
-	// "github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/google/uuid"
 )
 
@@ -41,45 +37,82 @@ func NewS3Service() (*S3Service, error) {
 
 	return &S3Service{
 		s3Client: s3.NewFromConfig(cfg, func(o *s3.Options) {
-			o.UsePathStyle = true
+			// Origin Access Control (OAC) usually doesn't require PathStyle if using CloudFront,
+			// but we'll leave it or remove it based on regional S3 requirements.
+			// Modern S3 usually works better without PathStyle.
+			o.UsePathStyle = false
 		}),
 		bucket: appCfg.AWS_BUCKET_NAME,
 	}, nil
 }
 
-func (s *S3Service) UploadFile(file multipart.File, fileHeader *multipart.FileHeader, folder string) (string, error) {
-	size := fileHeader.Size
-	buffer := make([]byte, size)
-	_, err := file.Read(buffer)
-	if err != nil {
-		return "", err
-	}
+// GenerateUploadURL generates a short-lived presigned URL for uploading a file directly to S3.
+// This follows the AWS best practice of using presigned URLs for scalability and security.
+func (s *S3Service) GenerateUploadURL(ctx context.Context, key, contentType string) (string, error) {
+	ps := s3.NewPresignClient(s.s3Client)
 
-	// Reset file pointer
-	file.Seek(0, 0)
-
-	// Create a unique file name
-	ext := filepath.Ext(fileHeader.Filename)
-	filename := fmt.Sprintf("%s/%s_%s%s", folder, time.Now().Format("20060102150405"), uuid.New().String(), ext)
-
-	// Detect content type
-	contentType := http.DetectContentType(buffer)
-
-	_, err = s.s3Client.PutObject(context.TODO(), &s3.PutObjectInput{
-		Bucket:        aws.String(s.bucket),
-		Key:           aws.String(filename),
-		Body:          bytes.NewReader(buffer),
-		ContentLength: aws.Int64(size),
-		ContentType:   aws.String(contentType),
-		// ACL:           types.ObjectCannedACLPublicRead,
-	})
+	req, err := ps.PresignPutObject(ctx, &s3.PutObjectInput{
+		Bucket:      aws.String(s.bucket),
+		Key:         aws.String(key),
+		ContentType: aws.String(contentType),
+	}, s3.WithPresignExpires(5*time.Minute))
 
 	if err != nil {
 		return "", err
 	}
 
-	// Construct public URL
-	appCfg := envConfig.LoadConfig()
-	url := fmt.Sprintf("https://%s.s3.%s.amazonaws.com/%s", s.bucket, appCfg.AWS_REGION, filename)
-	return url, nil
+	return req.URL, nil
 }
+
+// DirectUpload uploads a file directly from an io.Reader to S3.
+// Useful for smaller files or when client-side direct upload is not preferred.
+func (s *S3Service) DirectUpload(ctx context.Context, key string, body io.Reader, contentType string) error {
+	_, err := s.s3Client.PutObject(ctx, &s3.PutObjectInput{
+		Bucket:      aws.String(s.bucket),
+		Key:         aws.String(key),
+		Body:        body,
+		ContentType: aws.String(contentType),
+	})
+	return err
+}
+
+// GetMenuImageKey generates the S3 key for a menu image according to the recommended structure:
+// menus/images/menu/{userId}/avatar.webp (or other extensions)
+func (s *S3Service) GetMenuImageKey(userId string, filename string) string {
+	return fmt.Sprintf("menus/images/menu/%s/%s", userId, filename)
+}
+
+// GetVideoUploadKey generates the S3 key for a video upload according to the recommended structure:
+// menus/videos/uploads/{uuidv7}.mp4
+// Using UUID V7 for better database indexing and temporal ordering.
+func (s *S3Service) GetVideoUploadKey(ext string) string {
+	if ext == "" {
+		ext = ".mp4"
+	}
+	id, err := uuid.NewV7()
+	if err != nil {
+		// Fallback to V4 if V7 fails for some reason
+		return fmt.Sprintf("menus/videos/uploads/%s%s", uuid.New().String(), ext)
+	}
+	return fmt.Sprintf("menus/videos/uploads/%s%s", id.String(), ext)
+}
+
+// GetCloudFrontURL returns the public URL for a given S3 key via CloudFront.
+func (s *S3Service) GetCloudFrontURL(key string) string {
+	appCfg := envConfig.LoadConfig()
+	if appCfg.AWS_CLOUDFRONT_DOMAIN != "" {
+		return fmt.Sprintf("https://%s/%s", appCfg.AWS_CLOUDFRONT_DOMAIN, key)
+	}
+	// Fallback to S3 URL if CloudFront is not configured
+	return fmt.Sprintf("https://%s.s3.%s.amazonaws.com/%s", s.bucket, appCfg.AWS_REGION, key)
+}
+
+/*
+Video Processing (Production Grade) - Implementation Guidance:
+To implement the recommended stack:
+1. Bucket Event: Configure S3 to send an event notification to AWS Lambda or SNS when an object is created in `menus/videos/uploads/`.
+2. Lambda/MediaConvert:
+   - Use AWS Elemental MediaConvert for managed transcoding (recommended for production).
+   - Alternatively, use a Lambda function with an FFmpeg layer for smaller tasks.
+3. Output Storage: Store the processed HLS/Dash output in a separate folder (e.g., `menus/videos/processed/`) and serve via CloudFront.
+*/

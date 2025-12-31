@@ -2,7 +2,9 @@ package services
 
 import (
 	"context"
-	"mime/multipart"
+	"io"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/alibaba0010/postgres-api/internal/common/errors"
@@ -13,13 +15,53 @@ import (
 	"github.com/google/uuid"
 )
 
-// UploadMenuMedia uploads a file to S3
-func UploadMenuMedia(file multipart.File, header *multipart.FileHeader) (string, error) {
+// GetMenuUploadURL generates a presigned URL for menu media uploads
+func GetMenuUploadURL(ctx context.Context, userID string, filename string, contentType string) (string, string, error) {
+	s3Service, err := s3.NewS3Service()
+	if err != nil {
+		return "", "", err
+	}
+
+	var key string
+	if strings.HasPrefix(contentType, "video/") {
+		ext := filepath.Ext(filename)
+		key = s3Service.GetVideoUploadKey(ext)
+	} else {
+		key = s3Service.GetMenuImageKey(userID, filename)
+	}
+
+	url, err := s3Service.GenerateUploadURL(ctx, key, contentType)
+	if err != nil {
+		return "", "", err
+	}
+
+	// Also return the final public URL (CloudFront)
+	publicURL := s3Service.GetCloudFrontURL(key)
+
+	return url, publicURL, nil
+}
+
+// UploadMenuMedia handles direct media upload to S3
+func UploadMenuMedia(ctx context.Context, userID string, filename string, contentType string, body io.Reader) (string, error) {
 	s3Service, err := s3.NewS3Service()
 	if err != nil {
 		return "", err
 	}
-	return s3Service.UploadFile(file, header, "menus")
+
+	var key string
+	if strings.HasPrefix(contentType, "video/") {
+		ext := filepath.Ext(filename)
+		key = s3Service.GetVideoUploadKey(ext)
+	} else {
+		key = s3Service.GetMenuImageKey(userID, filename)
+	}
+
+	err = s3Service.DirectUpload(ctx, key, body, contentType)
+	if err != nil {
+		return "", err
+	}
+
+	return s3Service.GetCloudFrontURL(key), nil
 }
 
 // CreateMenu creates a new menu item
