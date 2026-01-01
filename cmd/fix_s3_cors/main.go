@@ -1,4 +1,3 @@
-package fixs3cors
 package main
 
 import (
