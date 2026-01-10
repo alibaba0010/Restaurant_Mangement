@@ -4,9 +4,9 @@ import (
 	"encoding/json"
 	"net/http"
 
+	authRoutes "github.com/alibaba0010/postgres-api/internal/auth/routes"
 	"github.com/alibaba0010/postgres-api/internal/common/dto"
 	"github.com/alibaba0010/postgres-api/internal/common/errors"
-	authRoutes "github.com/alibaba0010/postgres-api/internal/auth/routes"
 	"github.com/alibaba0010/postgres-api/internal/common/middlewares"
 	restaurantRoutes "github.com/alibaba0010/postgres-api/internal/restaurants/routes"
 	"github.com/gorilla/mux"
@@ -22,20 +22,19 @@ func ApiRouter() *mux.Router {
 
 	// global rate limit: 100 req/sec, burst 200 (tune as needed)
 	route.Use(middlewares.RateLimit(100, 200))
-	
+
 	// Serve Swagger UI at /swagger/
 	route.PathPrefix("/swagger/").Handler(httpSwagger.WrapHandler)
-	
+
 	// Create v1 subrouter with /api/v1 prefix
 	v1 := route.PathPrefix("/api/v1").Subrouter()
-	
-// Routes
-v1.HandleFunc("/healthcheck", HealthCheckHandler).Methods("GET")
+
+	// Routes
+	v1.HandleFunc("/healthcheck", HealthCheckHandler).Methods("GET")
 	authRoutes.AuthRoutes(v1.PathPrefix("/auth").Subrouter())
 	authRoutes.UserRoutes(v1)
 	restaurantRoutes.RestaurantRoutes(v1)
 	restaurantRoutes.MenuRoutes(v1)
-
 
 	route.NotFoundHandler = http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		errors.ErrorResponse(writer, request, errors.RouteNotExist())

@@ -16,17 +16,17 @@ import (
 	"github.com/alibaba0010/postgres-api/internal/utils"
 	"go.uber.org/zap"
 )
+
 const (
-	AccessTokenDuration  = 15 * time.Minute //15
+	AccessTokenDuration  = 15 * time.Minute   //15
 	RefreshTokenDuration = 7 * 24 * time.Hour // 7 days
 )
 
-
-
 type TokenPair struct {
-	AccessToken  string    `json:"access_token"`
-	RefreshToken string    `json:"refresh_token"`
+	AccessToken  string `json:"access_token"`
+	RefreshToken string `json:"refresh_token"`
 }
+
 // AccessClaims are the JWT claims stored in access tokens.
 type AccessTokenClaims struct {
 	UserID string         `json:"user_id"`
@@ -74,10 +74,10 @@ func GenerateTokenPair(ctx context.Context, userID string, role types.UserRole, 
 
 	// Refresh token
 	refreshClaims := &RefreshTokenClaims{
-		UserID: userID,
-		Role:   role,
-		IPAddress:     ip,
-		UserAgent:     userAgent,
+		UserID:    userID,
+		Role:      role,
+		IPAddress: ip,
+		UserAgent: userAgent,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(now.Add(RefreshTokenDuration)),
 			IssuedAt:  jwt.NewNumericDate(now),

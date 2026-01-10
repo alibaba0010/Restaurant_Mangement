@@ -99,7 +99,6 @@ func ExtractAuthenticatedUser(request *http.Request) *AuthenticatedUser {
 	return nil
 }
 
-
 // RequireRole enforces role-based access control using role hierarchy (admin > management > user)
 func RequireRole(allowedRoles ...string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
@@ -124,7 +123,6 @@ func RequireRole(allowedRoles ...string) func(http.Handler) http.Handler {
 		})
 	}
 }
-
 
 // CheckRolePermission checks if userRole has permission for any of requiredRoles
 // Uses role hierarchy: admin > management > user

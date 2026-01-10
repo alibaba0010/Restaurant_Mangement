@@ -17,8 +17,7 @@ import (
 	"github.com/alibaba0010/postgres-api/internal/database"
 )
 
-
-func main(){
+func main() {
 	fmt.Print("\033[H\033[2J")
 
 	logger.InitLogger()
@@ -30,7 +29,7 @@ func main(){
 
 	database.ConnectRedis()
 	defer database.CloseRedis()
-	
+
 	cfg := config.LoadConfig()
 
 	// Initialize Redpanda Producer
@@ -43,14 +42,13 @@ func main(){
 		logger.Log.Info("✅ Connected to Redpanda")
 	}
 
-
 	port := cfg.Port
 	frontendUrl := cfg.FRONTEND_URL
 	route := routes.ApiRouter()
-	
+
 	// Apply CORS middleware globally
 	handler := middlewares.CORS(frontendUrl)(route)
-	
+
 	server := &http.Server{
 		Addr:         ":" + port,
 		Handler:      handler,

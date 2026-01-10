@@ -98,4 +98,3 @@ func (r *UserRepository) UpdatePassword(ctx context.Context, userID, hashedPassw
 		Exec(ctx)
 	return err
 }
-

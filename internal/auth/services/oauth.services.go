@@ -93,4 +93,3 @@ type GoogleUser struct {
 	FamilyName    string `json:"family_name"`
 	Picture       string `json:"picture"`
 }
-

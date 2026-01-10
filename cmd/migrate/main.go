@@ -73,7 +73,7 @@ func newMigrationCmd(m *migrate.Migrator, l *slog.Logger) *cli.Command {
 						return nil
 					}
 					// l.Info("migrated to ", slog.Any("grous", group))
-					l.Info("Migrated successfully", 
+					l.Info("Migrated successfully",
 						slog.Int64("group_id", group.ID),
 						slog.Int("migrations_count", len(group.Migrations)),
 					)
@@ -98,7 +98,7 @@ func newMigrationCmd(m *migrate.Migrator, l *slog.Logger) *cli.Command {
 						return nil
 					}
 					// l.Info("rolled back to ", slog.Any("grous", group))
-						l.Info("Rolled back successfully", 
+					l.Info("Rolled back successfully",
 						slog.Int64("group_id", group.ID),
 						slog.Int("migrations_count", len(group.Migrations)),
 					)

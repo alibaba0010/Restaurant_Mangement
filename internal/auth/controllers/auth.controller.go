@@ -43,9 +43,6 @@ func sendAuthResponse(writer http.ResponseWriter, user *models.User, tokens *ser
 	utils.WriteJSON(writer, http.StatusOK, resp)
 }
 
-
-
-
 func SignupHandler(writer http.ResponseWriter, request *http.Request) {
 	var input dto.SignupInput
 
@@ -54,7 +51,7 @@ func SignupHandler(writer http.ResponseWriter, request *http.Request) {
 		errors.ErrorResponse(writer, request, errors.ValidationError("Invalid JSON body"))
 		return
 	}
-	
+
 	_, appErr := services.RegisterUser(request.Context(), input)
 	if appErr != nil {
 		errors.ErrorResponse(writer, request, appErr)
@@ -67,7 +64,6 @@ func SignupHandler(writer http.ResponseWriter, request *http.Request) {
 	}
 
 	utils.WriteJSON(writer, http.StatusCreated, resp)
-
 
 }
 
@@ -139,7 +135,6 @@ func SigninHandler(writer http.ResponseWriter, request *http.Request) {
 	sendAuthResponse(writer, user, tokens, "Signin successful")
 }
 
-
 func ResendVerificationHandler(w http.ResponseWriter, r *http.Request) {
 	var body dto.ResendVerificationInput
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -159,7 +154,6 @@ func ResendVerificationHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-
 func RefreshTokenHandler(writer http.ResponseWriter, request *http.Request) {
 	// Extract refresh token from cookie
 	refreshCookie, err := request.Cookie("refresh_token")
@@ -169,7 +163,7 @@ func RefreshTokenHandler(writer http.ResponseWriter, request *http.Request) {
 		return
 	}
 
-	refreshToken := refreshCookie.Value	
+	refreshToken := refreshCookie.Value
 
 	if refreshToken == "" {
 		errors.ErrorResponse(writer, request, errors.UnauthorizedError("refresh token missing; please login again"))
@@ -367,4 +361,3 @@ func ResetPasswordHandler(writer http.ResponseWriter, request *http.Request) {
 		Message: "Your password has been reset successfully. Please login with your new password",
 	})
 }
-

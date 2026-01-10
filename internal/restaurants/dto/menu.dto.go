@@ -17,14 +17,14 @@ type CreateMenuInput struct {
 
 // UpdateMenuInput represents the input for updating a menu item
 type UpdateMenuInput struct {
-	Name            *string   `json:"name"`
-	Description     *string   `json:"description"`
-	Price           *float64  `json:"price" validate:"omitempty,gt=0"`
-	ImageURLs       []string  `json:"image_urls"`
-	VideoURL        *string   `json:"video_url"`
-	IsAvailable     *bool     `json:"is_available"`
-	PrepTimeMinutes *int      `json:"prep_time_minutes"`
-	Calories        *int      `json:"calories"`
+	Name            *string  `json:"name"`
+	Description     *string  `json:"description"`
+	Price           *float64 `json:"price" validate:"omitempty,gt=0"`
+	ImageURLs       []string `json:"image_urls"`
+	VideoURL        *string  `json:"video_url"`
+	IsAvailable     *bool    `json:"is_available"`
+	PrepTimeMinutes *int     `json:"prep_time_minutes"`
+	Calories        *int     `json:"calories"`
 }
 
 // MenuResponse represents the response structure for a menu item
@@ -45,9 +45,10 @@ type MenuResponse struct {
 
 // MenusListResponse represents the list of menus
 type MenusListResponse struct {
-	Data []MenuResponse `json:"data"`
+	Data []MenuResponse           `json:"data"`
 	Meta commondto.PaginationMeta `json:"meta"`
 }
+
 // InitiateMultipartUploadInput represents the request to start a multipart upload
 type InitiateMultipartUploadInput struct {
 	Filename    string `json:"filename" validate:"required"`

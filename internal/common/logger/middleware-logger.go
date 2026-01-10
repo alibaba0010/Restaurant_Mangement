@@ -8,14 +8,16 @@ import (
 	// "sync"
 	"go.uber.org/zap"
 )
+
 type loggingResponseWriter struct {
-    http.ResponseWriter
-    status    int  
-    // once      sync.Once
+	http.ResponseWriter
+	status int
+	// once      sync.Once
 }
+
 func (lrw *loggingResponseWriter) WriteHeader(status int) {
-    lrw.status = status
-    lrw.ResponseWriter.WriteHeader(status)
+	lrw.status = status
+	lrw.ResponseWriter.WriteHeader(status)
 }
 func Logger(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {

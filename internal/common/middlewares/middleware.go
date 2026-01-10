@@ -75,69 +75,69 @@ func isLocalhost(s string) bool {
 
 // TokenBucket is a simple token bucket rate limiter
 type TokenBucket struct {
-    tokens chan struct{}
+	tokens chan struct{}
 }
 
 // NewTokenBucket creates a new token bucket that refills `rate` tokens per second up to `burst` capacity.
 func NewTokenBucket(rate int, burst int) *TokenBucket {
-    if rate <= 0 {
-        rate = 1
-    }
-    if burst <= 0 {
-        burst = rate
-    }
-    tb := &TokenBucket{tokens: make(chan struct{}, burst)}
-    // fill initial burst
-    for i := 0; i < burst; i++ {
-        select {
-        case tb.tokens <- struct{}{}:
-        default:
-        }
-    }
+	if rate <= 0 {
+		rate = 1
+	}
+	if burst <= 0 {
+		burst = rate
+	}
+	tb := &TokenBucket{tokens: make(chan struct{}, burst)}
+	// fill initial burst
+	for i := 0; i < burst; i++ {
+		select {
+		case tb.tokens <- struct{}{}:
+		default:
+		}
+	}
 
-    // start refill goroutine
-    go func() {
-        ticker := time.NewTicker(time.Second)
-        defer ticker.Stop()
-        for range ticker.C {
-            for i := 0; i < rate; i++ {
-                select {
-                case tb.tokens <- struct{}{}:
-                default:
-                    // channel full
-                }
-            }
-        }
-    }()
+	// start refill goroutine
+	go func() {
+		ticker := time.NewTicker(time.Second)
+		defer ticker.Stop()
+		for range ticker.C {
+			for i := 0; i < rate; i++ {
+				select {
+				case tb.tokens <- struct{}{}:
+				default:
+					// channel full
+				}
+			}
+		}
+	}()
 
-    return tb
+	return tb
 }
 
 // Allow tries to take a token and returns true if allowed
 func (tb *TokenBucket) Allow() bool {
-    select {
-    case <-tb.tokens:
-        return true
-    default:
-        return false
-    }
+	select {
+	case <-tb.tokens:
+		return true
+	default:
+		return false
+	}
 }
 
 // RateLimit returns a middleware that enforces a global token-bucket rate limit.
 // rate = tokens added per second, burst = maximum burst capacity.
 func RateLimit(rate int, burst int) func(http.Handler) http.Handler {
-    tb := NewTokenBucket(rate, burst)
-    return func(next http.Handler) http.Handler {
-        return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-            if !tb.Allow() {
-                logger.Log.Warn("rate limit exceeded", zap.String("path", r.URL.Path))
-                w.Header().Set("Content-Type", "application/json")
-                w.WriteHeader(http.StatusTooManyRequests)
-                _ = json.NewEncoder(w).Encode(map[string]string{"title": "Too Many Requests", "message": "rate limit exceeded"})
-                return
-            }
-            // additional production checks could go here (if needed)
-            next.ServeHTTP(w, r)
-        })
-    }
+	tb := NewTokenBucket(rate, burst)
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if !tb.Allow() {
+				logger.Log.Warn("rate limit exceeded", zap.String("path", r.URL.Path))
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusTooManyRequests)
+				_ = json.NewEncoder(w).Encode(map[string]string{"title": "Too Many Requests", "message": "rate limit exceeded"})
+				return
+			}
+			// additional production checks could go here (if needed)
+			next.ServeHTTP(w, r)
+		})
+	}
 }

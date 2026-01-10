@@ -23,7 +23,7 @@ func ConnectRedis() *redis.Client {
 	RedisClient = redis.NewClient(&redis.Options{
 		Addr:     cfg.REDIS_HOST + ":" + cfg.REDIS_PORT,
 		Password: cfg.REDIS_PASSWORD, // no password set
-		DB:       0,  // use default DB
+		DB:       0,                  // use default DB
 	})
 
 	// Ping to verify connection

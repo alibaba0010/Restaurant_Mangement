@@ -48,7 +48,7 @@ type RestaurantResponse struct {
 
 // RestaurantsListResponse is the response for listing restaurants
 type RestaurantsListResponse struct {
-	Title string               `json:"title"`
-	Data  []RestaurantResponse `json:"data"`
-	Meta  commondto.PaginationMeta       `json:"meta"`
+	Title string                   `json:"title"`
+	Data  []RestaurantResponse     `json:"data"`
+	Meta  commondto.PaginationMeta `json:"meta"`
 }

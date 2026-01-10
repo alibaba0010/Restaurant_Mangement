@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"crypto/rand"
+	"crypto/subtle"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -41,7 +42,7 @@ func mapValidatorErrors(err error) *errors.AppError {
 		for _, fe := range ves {
 			field := fe.Field()
 			var msg string
-			switch fe.Tag() {			
+			switch fe.Tag() {
 			case "required":
 				msg = fmt.Sprintf("%s is required", field)
 			case "min":
@@ -140,11 +141,12 @@ func RegisterUser(ctx context.Context, input dto.SignupInput) (*models.User, *er
 	cfg := config.LoadConfig()
 	verifyURL := fmt.Sprintf("%s/verify?token=%s", cfg.FRONTEND_URL, token)
 	html := VerifyMailHTML(user.Name, verifyURL)
-		// Use centralized async email sender
-		SendEmailHandler(user.Email, "Verify your email", html)
+	// Use centralized async email sender
+	SendEmailHandler(user.Email, "Verify your email", html)
 
 	return nil, nil
 }
+
 // Activate User Functionality
 func ActivateUser(ctx context.Context, token string) (*models.User, *errors.AppError) {
 	// Reuse helper to get verification payload (centralizes Redis access)
@@ -178,8 +180,6 @@ func ActivateUser(ctx context.Context, token string) (*models.User, *errors.AppE
 	return user, nil
 }
 
-
-
 func LoginUser(ctx context.Context, email, password string) (*models.User, *TokenPair, *errors.AppError) {
 	// Validate input using dto validators for consistency
 	validate := validator.New()
@@ -203,6 +203,7 @@ func LoginUser(ctx context.Context, email, password string) (*models.User, *Toke
 
 	return user, nil, nil
 }
+
 // OAuthLogin handles the social login logic (find or create user, generate tokens)
 func OAuthLogin(ctx context.Context, email, name, picture, ip, ua string) (*models.User, *TokenPair, *errors.AppError) {
 	// Check if user exists
@@ -293,13 +294,15 @@ func HandleOAuthCallback(ctx context.Context, provider, code, ip, ua string) (*m
 
 // VerifyPassword compares a plaintext password with an argon2id hash
 func verifyPassword(password, hash string) bool {
-	// Parse hash components
+	// Time: O(1) (argon2 runs in fixed time based on parameters)
+	// Space: O(1)
+	// Parse hash components: expected format: $argon2id$v=19$m=...,t=...,p=...$<salt>$<hash>
 	parts := strings.Split(hash, "$")
 	if len(parts) != 6 {
 		return false
 	}
 
-	// Extract salt and hash from hash string
+	// Extract encoded salt & hash
 	b64Salt := parts[4]
 	b64Hash := parts[5]
 
@@ -313,15 +316,50 @@ func verifyPassword(password, hash string) bool {
 		return false
 	}
 
-	// Hash the provided password with the same salt using centralized params
-	newHash := argon2.IDKey([]byte(password), salt, argonTimeParam, argonMemory, argonThreads, argonKeyLen)
+	// Attempt to parse parameters from parts[3] (m=...,t=...,p=...)
+	mem := argonMemory
+	t := argonTimeParam
+	p := argonThreads
+	params := parts[3]
+	if params != "" {
+		kvs := strings.Split(params, ",")
+		for _, kv := range kvs {
+			if strings.HasPrefix(kv, "m=") {
+				var parsed uint32
+				_, err := fmt.Sscanf(kv, "m=%d", &parsed)
+				if err == nil {
+					mem = parsed
+				}
+			} else if strings.HasPrefix(kv, "t=") {
+				var parsed uint32
+				_, err := fmt.Sscanf(kv, "t=%d", &parsed)
+				if err == nil {
+					t = parsed
+				}
+			} else if strings.HasPrefix(kv, "p=") {
+				var parsed uint8
+				_, err := fmt.Sscanf(kv, "p=%d", &parsed)
+				if err == nil {
+					p = parsed
+				}
+			}
+		}
+	}
 
-	// Compare hashes
-	return string(newHash) == string(originalHash)
+	// Hash the provided password with the same salt using parsed params
+	newHash := argon2.IDKey([]byte(password), salt, t, mem, p, argonKeyLen)
+
+	// Use constant-time comparison to avoid timing attacks
+	if len(newHash) != len(originalHash) {
+		return false
+	}
+	return subtle.ConstantTimeCompare(newHash, originalHash) == 1
 }
 
 // hashPassword creates an argon2id hash of the password
 func hashPassword(password string) (string, error) {
+	// Time: O(1) (Argon2 costs are constant per call based on configured params)
+	// Space: O(1)
 	// Parameters
 	salt := make([]byte, argonSaltLen)
 	if _, err := rand.Read(salt); err != nil {
@@ -336,36 +374,19 @@ func hashPassword(password string) (string, error) {
 	return encoded, nil
 }
 
-
-func LogoutUser(ctx context.Context, userID string) (*errors.AppError) {
+func LogoutUser(ctx context.Context, userID string) *errors.AppError {
 	if userID == "" {
 		return errors.ValidationError("user id is required")
 	}
 
-	// Use a transaction to ensure atomic deletion of all tokens
-	tx, err := database.DB.BeginTx(ctx, nil)
-	if err != nil {
-		logger.Log.Error("failed to begin transaction for logout", zap.Error(err))
-		return errors.InternalError(err)
-	}
-
-	defer func() {
-		if err := tx.Rollback(); err != nil && err.Error() != "tx: already committed or rolled back" {
-			logger.Log.Error("failed to rollback logout transaction", zap.Error(err))
-		}
-	}()
-
-	// Delete all refresh tokens for the user
-	_, err = repositories.TokenRepo.DeleteAllForUserInTx(ctx, tx, userID)
-
+	// Time: O(1) - single DELETE statement
+	// Space: O(1)
+	// A single SQL DELETE is atomic; starting an explicit transaction here
+	// adds overhead without benefit because only one statement is executed.
+	// Use the repository helper to delete directly.
+	_, err := repositories.TokenRepo.DeleteAllForUser(ctx, userID)
 	if err != nil {
 		logger.Log.Error("failed to delete refresh tokens", zap.Error(err), zap.String("user_id", userID))
-		return errors.InternalError(err)
-	}
-
-	// Commit the transaction
-	if err := tx.Commit(); err != nil {
-		logger.Log.Error("failed to commit logout transaction", zap.Error(err))
 		return errors.InternalError(err)
 	}
 
@@ -385,17 +406,23 @@ func RefreshTokenWithRotation(ctx context.Context, refreshToken, ip, userAgent s
 
 	userID := refreshClaims.UserID
 
-	// Check if refresh token exists in database
-	exists, err := repositories.TokenRepo.Exists(ctx, userID, refreshToken)
-
+	// Time: O(1) Space: O(1)
+	// Fetch the stored refresh token record to validate metadata (ip/userAgent)
+	rt, err := repositories.TokenRepo.FindOne(ctx, userID, refreshToken)
 	if err != nil {
 		logger.Log.Error("failed to query refresh token from DB", zap.Error(err))
-		return nil, errors.InternalError(err)
+		return nil, errors.UnauthorizedError("user login")
 	}
 
-	if !exists {
-		logger.Log.Warn("refresh token not found in database", zap.String("user_id", userID))
-		return nil, errors.UnauthorizedError("user login")
+	// Validate IP and User-Agent if they were recorded with the token
+	// Strict equality check is used here; adjust policy if you need more lenient matching.
+	if rt.IPAddress != "" && ip != "" && strings.TrimSpace(rt.IPAddress) != strings.TrimSpace(ip) {
+		logger.Log.Warn("refresh token IP mismatch", zap.String("expected", rt.IPAddress), zap.String("got", ip))
+		return nil, errors.UnauthorizedError("refresh token validation failed")
+	}
+	if rt.UserAgent != "" && userAgent != "" && strings.TrimSpace(rt.UserAgent) != strings.TrimSpace(userAgent) {
+		logger.Log.Warn("refresh token user-agent mismatch", zap.String("expected", rt.UserAgent), zap.String("got", userAgent))
+		return nil, errors.UnauthorizedError("refresh token validation failed")
 	}
 
 	// Generate new token pair with rotation
@@ -515,7 +542,6 @@ func ResetPassword(ctx context.Context, token, newPassword string) *errors.AppEr
 	return nil
 }
 
-
 // GetVerificationPayload retrieves the verification data from Redis using the token
 func GetVerificationPayload(ctx context.Context, token string) (*dto.VerificationPayload, error) {
 	key := "verify:" + token
@@ -543,9 +569,9 @@ func ResendVerification(ctx context.Context, email string) *errors.AppError {
 		return errors.InternalError(err)
 	}
 	if exists {
-		// Do not leak account existence, but since they are already activated, 
+		// Do not leak account existence, but since they are already activated,
 		// they shouldn't be here. We return a generic success message in controller.
-		return nil 
+		return nil
 	}
 
 	// 2. Check if verification token exists in Redis
@@ -574,7 +600,6 @@ func ResendVerification(ctx context.Context, email string) *errors.AppError {
 	return nil
 }
 
-// SendEmailHandler is a small wrapper to fire-and-forget email sending
 // SendEmailHandler is a centralized fire-and-forget email sender with subject
 func SendEmailHandler(email, subject, html string) {
 	go func() {

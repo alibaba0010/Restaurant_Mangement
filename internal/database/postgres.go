@@ -23,7 +23,7 @@ var (
 
 func ConnectDB() *bun.DB {
 	cfg := config.LoadConfig()
-	connectionURL := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable", 
+	connectionURL := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable",
 		cfg.DB_USERNAME, cfg.DB_PASSWORD, cfg.DB_HOST, cfg.DB_PORT, cfg.DB_NAME)
 
 	config, err := pgx.ParseConfig(connectionURL)

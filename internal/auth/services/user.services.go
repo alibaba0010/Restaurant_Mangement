@@ -42,8 +42,6 @@ func getUserByID(ctx context.Context, userID string) (*models.User, *errors.AppE
 	return user, nil
 }
 
-
-
 // GetCurrentUserByID retrieves a user from the database by ID and returns formatted response
 // Uses context for cancellation and timeout support
 func GetCurrentUserByID(ctx context.Context, userID string) (*dto.CurrentUserResponse, *errors.AppError) {
@@ -103,7 +101,6 @@ func ValidateUserRole(roleStr string) (types.UserRole, *errors.AppError) {
 	}
 	return role, nil
 }
-
 
 // GetUserByEmail retrieves a user by email address
 func GetUserByEmail(ctx context.Context, email string) (*models.User, *errors.AppError) {

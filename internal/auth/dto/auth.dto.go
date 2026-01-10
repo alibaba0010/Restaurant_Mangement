@@ -13,9 +13,10 @@ type SignupInput struct {
 	Password        string `json:"password" validate:"required,min=6,max=18,password_special"`
 	ConfirmPassword string `json:"confirmPassword" validate:"required,eqfield=Password"`
 }
+
 // Response is a generic API response envelope used across handlers.
 type SignUpResponse struct {
-	Title string      `json:"title"`
+	Title string     `json:"title"`
 	Data  SigninData `json:"data"`
 }
 
@@ -31,19 +32,18 @@ type SigninResponse struct {
 }
 
 type SigninData struct {
-	ID        string           `json:"id"`
-	Name      string           `json:"name"`
-	Email     string           `json:"email"`
-	Role      types.UserRole   `json:"role"`
-	Address   string `json:"address,omitempty"`
-	AvatarURL string `json:"avatar_url,omitempty"`
-	PhoneNumber string  `json:"phone_number,omitempty"`
-	Status    types.UserStatus `json:"status"`
-	CreatedAt string           `json:"created_at"`
-	UpdatedAt string           `json:"updated_at"`
-	AccessToken string `json:"access_token,omitempty"`
+	ID          string           `json:"id"`
+	Name        string           `json:"name"`
+	Email       string           `json:"email"`
+	Role        types.UserRole   `json:"role"`
+	Address     string           `json:"address,omitempty"`
+	AvatarURL   string           `json:"avatar_url,omitempty"`
+	PhoneNumber string           `json:"phone_number,omitempty"`
+	Status      types.UserStatus `json:"status"`
+	CreatedAt   string           `json:"created_at"`
+	UpdatedAt   string           `json:"updated_at"`
+	AccessToken string           `json:"access_token,omitempty"`
 }
-
 
 // user payload stored in redis during signup
 type VerificationPayload struct {
@@ -60,12 +60,12 @@ type UpdateUserInput struct {
 	PhoneNumber string `json:"phone_number" validate:"omitempty,min=10,max=15"`
 }
 
-
 // LogoutResponse is returned after a successful logout
 type LogoutResponse struct {
 	Title   string `json:"title"`
 	Message string `json:"message"`
 }
+
 // ForgotPasswordInput is used when a user requests a password reset
 type ForgotPasswordInput struct {
 	Email string `json:"email" validate:"required,email"`
@@ -80,7 +80,7 @@ type ResetPasswordInput struct {
 
 // ResendVerificationInput is the payload for requesting a resend of verification email
 type ResendVerificationInput struct {
-    Email string `json:"email" validate:"required,email"`
+	Email string `json:"email" validate:"required,email"`
 }
 
 // RegisterValidators registers custom validators on the provided validator instance.

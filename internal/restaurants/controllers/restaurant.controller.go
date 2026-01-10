@@ -130,7 +130,7 @@ func UpdateRestaurantHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	switch user.Role {
-case types.RoleManagement:
+	case types.RoleManagement:
 		// Check ownership
 		if existing.UserID == nil || *existing.UserID != user.UserID {
 			errors.ErrorResponse(w, r, errors.ForbiddenError("You do not have permission to update this restaurant"))
@@ -141,11 +141,11 @@ case types.RoleManagement:
 		// User requirement: "management can only get restaurants created by him and update its name, description, address, capacity, delivery/takeaway available"
 		// This implies they CANNOT update status.
 		// We explicitly ignore/clear status if management
-		input.Status = "" 
+		input.Status = ""
 	case types.RoleAdmin:
 		// Admin can update status, so we leave it
 	default:
-		// Other roles? Assume forbidden if not admin/management caught by middleware, 
+		// Other roles? Assume forbidden if not admin/management caught by middleware,
 		// but explicit check is safer
 		errors.ErrorResponse(w, r, errors.ForbiddenError("You do not have permission"))
 		return

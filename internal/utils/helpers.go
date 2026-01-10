@@ -17,6 +17,7 @@ import (
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 )
+
 func GenerateUUIDv7() (uuid.UUID, error) {
 	// uuid.NewV7 requires a source of randomness and the current time.
 	// We'll use time.Now() and the default crypto/rand source.
@@ -35,7 +36,6 @@ func GenerateToken() (string, error) {
 	}
 	return hex.EncodeToString(bytes), nil
 }
-
 
 // extractClientIP extracts the client IP from request headers with fallbacks.
 func ExtractClientIP(request *http.Request) string {
@@ -67,7 +67,7 @@ func SetAuthCookies(writer http.ResponseWriter, accessToken, refreshToken string
 // SetRefreshTokenCookie sets a refresh token HTTP-only cookie with proper security settings.
 // The Secure flag is automatically set to true if the frontend URL is HTTPS.
 func SetRefreshTokenCookie(writer http.ResponseWriter, refreshToken string, tokenDuration time.Duration) {
-	logger.Log.Info("Refresh token value: ", zap.String("Refresh Token......",refreshToken))
+	logger.Log.Info("Refresh token value: ", zap.String("Refresh Token......", refreshToken))
 	cfg := config.LoadConfig()
 	isSecure := strings.HasPrefix(cfg.FRONTEND_URL, "https")
 
@@ -90,7 +90,6 @@ func SetRefreshTokenCookie(writer http.ResponseWriter, refreshToken string, toke
 
 	http.SetCookie(writer, cookie)
 }
-
 
 // ClearRefreshTokenCookie clears the refresh token cookie by setting MaxAge to -1.
 func ClearRefreshTokenCookie(writer http.ResponseWriter, isSecure bool) {
@@ -127,8 +126,7 @@ func SetAccessTokenCookie(writer http.ResponseWriter, accessToken string, tokenD
 	}
 
 	http.SetCookie(writer, cookie)
-	}
-
+}
 
 // ClearAccessTokenCookie clears the access token cookie.
 func ClearAccessTokenCookie(writer http.ResponseWriter, isSecure bool) {
@@ -143,6 +141,7 @@ func ClearAccessTokenCookie(writer http.ResponseWriter, isSecure bool) {
 	}
 	http.SetCookie(writer, cookie)
 }
+
 // WriteJSON writes a JSON response with the provided status code.
 func WriteJSON(writer http.ResponseWriter, status int, v any) {
 	writer.Header().Set("Content-Type", "application/json")

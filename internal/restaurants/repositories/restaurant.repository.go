@@ -2,8 +2,8 @@ package repositories
 
 import (
 	"context"
-	"time"
 	"fmt"
+	"time"
 
 	"github.com/alibaba0010/postgres-api/internal/database"
 	"github.com/alibaba0010/postgres-api/internal/restaurants/models"

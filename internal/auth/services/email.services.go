@@ -67,7 +67,7 @@ func SendEmail(to, subject, htmlBody string) error {
 // BuildWelcomeHTML returns a simple welcome HTML body. You can expand this
 // to include verification links, tokens, etc.
 func VerifyMailHTML(name, verifyURL string) string {
-		return fmt.Sprintf(`
+	return fmt.Sprintf(`
 		<!doctype html>
 		<html lang="en">
 		<head>

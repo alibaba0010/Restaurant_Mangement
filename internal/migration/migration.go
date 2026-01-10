@@ -5,6 +5,7 @@ import (
 
 	"github.com/uptrace/bun/migrate"
 )
+
 // Migrations variable for running migrations.
 var Migrations = migrate.NewMigrations()
 
@@ -14,6 +15,7 @@ func New() *migrate.Migrations {
 }
 
 // //go:embed *.sql *.tx.*.sql
+//
 //go:embed migrations/*.sql
 var sqlMigrations embed.FS
 

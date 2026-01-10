@@ -10,7 +10,7 @@ type PaginationMeta struct {
 
 // PaginatedResponse is a generic wrapper for paginated data
 type PaginatedResponse struct {
-	Title string      `json:"title,omitempty"`
-	Data  interface{} `json:"data"`
+	Title string         `json:"title,omitempty"`
+	Data  interface{}    `json:"data"`
 	Meta  PaginationMeta `json:"meta"`
 }

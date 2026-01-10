@@ -21,13 +21,13 @@ func InitLogger() {
 	config := zap.NewDevelopmentEncoderConfig()
 	config.EncodeLevel = zapcore.CapitalColorLevelEncoder // Enable colors
 	config.EncodeTime = customTimeEncoder                 // Human-friendly timestamp
-	config.EncodeCaller = nil                            // Disable caller
+	config.EncodeCaller = nil                             // Disable caller
 	config.EncodeLevel = zapcore.CapitalColorLevelEncoder
-	config.ConsoleSeparator = " "                        // Clean spacing between fields
-	
+	config.ConsoleSeparator = " " // Clean spacing between fields
+
 	// Create console encoder
 	consoleEncoder := zapcore.NewConsoleEncoder(config)
-	
+
 	// Write to stderr for console output
 	// Allow LOG_LEVEL env var to control log level (debug|info|warn|error)
 	lvl := zapcore.InfoLevel
@@ -52,7 +52,7 @@ func InitLogger() {
 	Log = zap.New(core)
 }
 
-func Sync(){
+func Sync() {
 	if Log != nil {
 		_ = Log.Sync()
 	}

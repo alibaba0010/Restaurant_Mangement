@@ -184,8 +184,6 @@ func CompleteMultipartUploadHandler(writer http.ResponseWriter, request *http.Re
 	})
 }
 
-
-
 // verifyRestaurantOwnership checks if the user owns the restaurant
 func verifyRestaurantOwnership(ctx context.Context, restaurantID string, userID string) *errors.AppError {
 	restaurant, err := services.GetRestaurantByID(ctx, restaurantID)
