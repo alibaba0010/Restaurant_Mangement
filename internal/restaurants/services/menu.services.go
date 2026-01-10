@@ -2,19 +2,27 @@ package services
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
 	"io"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/alibaba0010/postgres-api/internal/common/errors"
+	"github.com/alibaba0010/postgres-api/internal/common/events"
+	"github.com/alibaba0010/postgres-api/internal/common/logger"
 	"github.com/alibaba0010/postgres-api/internal/common/s3"
+	"github.com/alibaba0010/postgres-api/internal/database"
 	"github.com/alibaba0010/postgres-api/internal/restaurants/dto"
 	"github.com/alibaba0010/postgres-api/internal/restaurants/models"
 	"github.com/alibaba0010/postgres-api/internal/restaurants/repositories"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/google/uuid"
+	"go.uber.org/zap"
 )
 
 // generateKey determines duplicate S3 key logic
@@ -99,7 +107,7 @@ func GetMenuByID(ctx context.Context, id string) (*models.Menu, *errors.AppError
 	return menu, nil
 }
 
-// ListMenus retrieves a paginated list of menu items with filters
+// ListMenus retrieves a paginated list of menu items with filters/cache
 func ListMenus(ctx context.Context, page, pageSize int, queryStr string, restaurantID string, minPrice, maxPrice *float64, isAvailable *bool, sortBy, order string) ([]dto.MenuResponse, int64, *errors.AppError) {
 	if page <= 0 {
 		page = 1
@@ -108,6 +116,27 @@ func ListMenus(ctx context.Context, page, pageSize int, queryStr string, restaur
 		pageSize = 20
 	}
 
+	// Generate Cache Key
+	cacheKeyPayload := fmt.Sprintf("%d:%d:%s:%s:%v:%v:%v:%s:%s", page, pageSize, queryStr, restaurantID, minPrice, maxPrice, isAvailable, sortBy, order)
+	hash := sha256.Sum256([]byte(cacheKeyPayload))
+	cacheKey := "menus:list:" + hex.EncodeToString(hash[:])
+
+	// 1. Try Cache
+	if database.RedisClient != nil {
+		val, err := database.RedisClient.Get(ctx, cacheKey).Result()
+		if err == nil {
+			var cachedResult struct {
+				Menus []dto.MenuResponse `json:"menus"`
+				Total int64              `json:"total"`
+			}
+			if err := json.Unmarshal([]byte(val), &cachedResult); err == nil {
+				// Cache Hit
+				return cachedResult.Menus, cachedResult.Total, nil
+			}
+		}
+	}
+
+	// 2. Fetch from Repo
 	menus, total, err := repositories.MenuRepo.FindAll(ctx, page, pageSize, queryStr, restaurantID, minPrice, maxPrice, isAvailable, sortBy, order)
 	if err != nil {
 		return nil, 0, errors.InternalError(err)
@@ -116,6 +145,20 @@ func ListMenus(ctx context.Context, page, pageSize int, queryStr string, restaur
 	responses := make([]dto.MenuResponse, len(menus))
 	for i, m := range menus {
 		responses[i] = *MapMenuToResponse(&m)
+	}
+
+	// 3. Set Cache
+	if database.RedisClient != nil {
+		cachedResult := struct {
+			Menus []dto.MenuResponse `json:"menus"`
+			Total int64              `json:"total"`
+		}{
+			Menus: responses,
+			Total: total,
+		}
+		if data, err := json.Marshal(cachedResult); err == nil {
+			database.RedisClient.Set(ctx, cacheKey, data, 5*time.Minute)
+		}
 	}
 
 	return responses, total, nil
@@ -156,6 +199,15 @@ func UpdateMenu(ctx context.Context, id string, input dto.UpdateMenuInput) (*dto
 	err := repositories.MenuRepo.Update(ctx, menu)
 	if err != nil {
 		return nil, errors.InternalError(err)
+	}
+
+	// Publish Event
+	producer := events.GetGlobalProducer()
+	if producer != nil {
+		event := NewMenuUpdatedEvent(menu.ID.String())
+		if err := producer.Publish(ctx, event); err != nil {
+			logger.Log.Error("Failed to publish menu updated event", zap.Error(err))
+		}
 	}
 
 	return MapMenuToResponse(menu), nil

@@ -25,7 +25,6 @@ import (
 	"github.com/alibaba0010/postgres-api/internal/utils"
 )
 
-
 // Argon2 parameters centralized for readability and maintainability
 const (
 	argonTimeParam uint32 = 1
@@ -42,9 +41,7 @@ func mapValidatorErrors(err error) *errors.AppError {
 		for _, fe := range ves {
 			field := fe.Field()
 			var msg string
-			switch fe.Tag() {
-			case "oneof":
-				msg = fmt.Sprintf("%s can only either be user, admin or management", field)
+			switch fe.Tag() {			
 			case "required":
 				msg = fmt.Sprintf("%s is required", field)
 			case "min":
@@ -67,9 +64,7 @@ func mapValidatorErrors(err error) *errors.AppError {
 	return errors.ValidationError(err.Error())
 }
 
-// RegisterUser handles the DB work for signing up a new user.
-// It checks for an existing email, hashes the password and inserts the user.
-// Returns the created user (with ID populated) or an AppError for controller to return.
+// Register User Functionality
 func RegisterUser(ctx context.Context, input dto.SignupInput) (*models.User, *errors.AppError) {
 	// Validate input using same validation rules as controllers previously used
 	validate := validator.New()
@@ -80,11 +75,8 @@ func RegisterUser(ctx context.Context, input dto.SignupInput) (*models.User, *er
 		return nil, mapValidatorErrors(err)
 	}
 
-	// Set default role if not provided
-	role := types.UserRole(input.Role)
-	if role == "" {
-		role = types.RoleUser
-	}
+	// Set default role
+	role := types.RoleUser
 
 	// Check if user already exists
 	exists, err := repositories.UserRepo.ExistsByEmail(ctx, input.Email)
@@ -134,50 +126,37 @@ func RegisterUser(ctx context.Context, input dto.SignupInput) (*models.User, *er
 	}
 
 	ttl := 15 * time.Minute
-	// Store token -> payload
+	// Store token(key) -> payload(value)
 	if err := database.RedisClient.Set(ctx, "verify:"+token, b, ttl).Err(); err != nil {
 		return nil, errors.InternalError(err)
 	}
-	// Store email -> token for resending
+	// Also store mapping from email -> token so we can lookup token by email for resends
 	if err := database.RedisClient.Set(ctx, "verify:email:"+user.Email, token, ttl).Err(); err != nil {
+		// If this secondary set fails, try to clean up the primary key and return error
+		_ = database.RedisClient.Del(ctx, "verify:"+token).Err()
 		return nil, errors.InternalError(err)
 	}
-
 	// Build verification URL
 	cfg := config.LoadConfig()
 	verifyURL := fmt.Sprintf("%s/verify?token=%s", cfg.FRONTEND_URL, token)
 	html := VerifyMailHTML(user.Name, verifyURL)
-		go func() {
-		if err := SendEmail(user.Email, "Verify your email", html); err != nil {
-			logger.Log.Error("failed to send verification email", 
-				zap.Error(err),
-				zap.String("email", user.Email),
-				zap.String("token", token),
-			)
-			// Optionally: Add to a retry queue here  future enhancement
-		}
-	}()
+		// Use centralized async email sender
+		SendEmailHandler(user.Email, "Verify your email", html)
 
-	// Per new flow, registration doesn't persist the user yet — activation will.
 	return nil, nil
 }
+// Activate User Functionality
 func ActivateUser(ctx context.Context, token string) (*models.User, *errors.AppError) {
-	key := "verify:" + token
-	data, err := database.RedisClient.Get(ctx, key).Bytes()
-	if err == redisPkg.Nil {
-		return nil, errors.ValidationError("invalid or expired token")
-	}
+	// Reuse helper to get verification payload (centralizes Redis access)
+	payload, err := GetVerificationPayload(ctx, token)
 	if err != nil {
+		if err == redisPkg.Nil {
+			return nil, errors.ValidationError("invalid or expired token")
+		}
 		return nil, errors.InternalError(err)
 	}
 
-	var payload dto.VerificationPayload
-	if err := json.Unmarshal(data, &payload); err != nil {
-		_ = database.RedisClient.Del(ctx, key).Err()
-		return nil, errors.InternalError(err)
-	}
-
-	// The password stored in Redis is already hashed, so use it directly.
+	// The password stored in Redis is already hashed.
 	user := &models.User{
 		ID:       payload.ID,
 		Name:     payload.Name,
@@ -192,8 +171,8 @@ func ActivateUser(ctx context.Context, token string) (*models.User, *errors.AppE
 		return nil, errors.InternalError(err)
 	}
 
-	// Token used within TTL -> remove both keys
-	_ = database.RedisClient.Del(ctx, key).Err()
+	// Token used within TTL -> remove both keys (token and email->token mapping)
+	_ = database.RedisClient.Del(ctx, "verify:"+token).Err()
 	_ = database.RedisClient.Del(ctx, "verify:email:"+payload.Email).Err()
 
 	return user, nil
@@ -202,8 +181,13 @@ func ActivateUser(ctx context.Context, token string) (*models.User, *errors.AppE
 
 
 func LoginUser(ctx context.Context, email, password string) (*models.User, *TokenPair, *errors.AppError) {
-	if email == "" || password == "" {
-		return nil, nil, errors.ValidationError("email and password are required")
+	// Validate input using dto validators for consistency
+	validate := validator.New()
+	dto.RegisterValidators(validate)
+
+	in := dto.SigninInput{Email: email, Password: password}
+	if err := validate.Struct(in); err != nil {
+		return nil, nil, mapValidatorErrors(err)
 	}
 
 	// Fetch user by email
@@ -255,6 +239,51 @@ func OAuthLogin(ctx context.Context, email, name, picture, ip, ua string) (*mode
 	}
 
 	tokens, appErr := GenerateTokenPair(ctx, user.ID, user.Role, ip, ua)
+	if appErr != nil {
+		return nil, nil, appErr
+	}
+
+	return user, tokens, nil
+}
+
+// GenerateOAuthStateAndURL creates an oauth state token and returns provider auth url
+func GenerateOAuthStateAndURL(provider string) (string, string, *errors.AppError) {
+	state, err := utils.GenerateToken()
+	if err != nil {
+		return "", "", errors.InternalError(err)
+	}
+
+	var authURL string
+	switch provider {
+	case "google":
+		authURL = GetGoogleAuthURL(state)
+	case "facebook":
+		authURL = GetFacebookAuthURL(state)
+	default:
+		return "", "", errors.ValidationError("unsupported provider")
+	}
+
+	return state, authURL, nil
+}
+
+// HandleOAuthCallback exchanges code, obtains user info and performs social login
+func HandleOAuthCallback(ctx context.Context, provider, code, ip, ua string) (*models.User, *TokenPair, *errors.AppError) {
+	var email, name, picture string
+
+	switch provider {
+	case "google":
+		gUser, err := ExchangeGoogleCode(code)
+		if err != nil {
+			return nil, nil, errors.UnauthorizedError(err.Error())
+		}
+		email = gUser.Email
+		name = gUser.Name
+		picture = gUser.Picture
+	default:
+		return nil, nil, errors.ValidationError("unsupported provider")
+	}
+
+	user, tokens, appErr := OAuthLogin(ctx, email, name, picture, ip, ua)
 	if appErr != nil {
 		return nil, nil, appErr
 	}
@@ -431,16 +460,8 @@ func ForgotPassword(ctx context.Context, email string) *errors.AppError {
 	resetURL := fmt.Sprintf("%s/reset-password?token=%s", cfg.FRONTEND_URL, token)
 	html := ResetPasswordMailHTML(user.Name, resetURL)
 
-	// Send email asynchronously
-	go func() {
-		if err := SendEmail(user.Email, "Reset your password", html); err != nil {
-			logger.Log.Error("failed to send password reset email",
-				zap.Error(err),
-				zap.String("email", user.Email),
-				zap.String("token", token),
-			)
-		}
-	}()
+	// Send email asynchronously via central handler
+	SendEmailHandler(user.Email, "Reset your password", html)
 
 	return nil
 }
@@ -547,18 +568,22 @@ func ResendVerification(ctx context.Context, email string) *errors.AppError {
 	verifyURL := fmt.Sprintf("%s/verify?token=%s", cfg.FRONTEND_URL, token)
 	html := VerifyMailHTML(payload.Name, verifyURL)
 
-	go func() {
-		if err := SendEmail(email, "Verify your email", html); err != nil {
-			logger.Log.Error("failed to resend verification email", zap.Error(err), zap.String("email", email))
-		}
-	}()
+	// Use centralized async sender
+	SendEmailHandler(email, "Verify your email", html)
 
 	return nil
 }
 
-// SendVerificationEmail is a small wrapper to fire-and-forget email sending
-func SendVerificationEmail(email, html string) {
-	if err := SendEmail(email, "Verify your email", html); err != nil {
-		logger.Log.Error("failed to send verification email", zap.Error(err), zap.String("email", email))
-	}
+// SendEmailHandler is a small wrapper to fire-and-forget email sending
+// SendEmailHandler is a centralized fire-and-forget email sender with subject
+func SendEmailHandler(email, subject, html string) {
+	go func() {
+		if err := SendEmail(email, subject, html); err != nil {
+			logger.Log.Error("failed to send email",
+				zap.Error(err),
+				zap.String("email", email),
+				zap.String("subject", subject),
+			)
+		}
+	}()
 }

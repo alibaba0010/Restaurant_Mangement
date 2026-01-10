@@ -12,13 +12,11 @@ import (
 	"github.com/alibaba0010/postgres-api/internal/auth/dto"
 	"github.com/alibaba0010/postgres-api/internal/auth/models"
 	"github.com/alibaba0010/postgres-api/internal/auth/services"
+	commondto "github.com/alibaba0010/postgres-api/internal/common/dto"
 	"github.com/alibaba0010/postgres-api/internal/common/errors"
 	"github.com/alibaba0010/postgres-api/internal/common/guards"
-	"github.com/alibaba0010/postgres-api/internal/common/logger"
 	"github.com/alibaba0010/postgres-api/internal/config"
 	"github.com/alibaba0010/postgres-api/internal/utils"
-
-	"go.uber.org/zap"
 )
 
 // sendAuthResponse is a helper to centralize setting cookies and writing the final success response.
@@ -63,7 +61,7 @@ func SignupHandler(writer http.ResponseWriter, request *http.Request) {
 		return
 	}
 	// Per new flow we don't persist the user at signup; activation will.
-	resp := dto.MessageResponse{
+	resp := commondto.MessageResponse{
 		Title:   "Successfully signed up",
 		Message: "Please check your email for a verification link",
 	}
@@ -155,7 +153,7 @@ func ResendVerificationHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	utils.WriteJSON(w, http.StatusOK, dto.MessageResponse{
+	utils.WriteJSON(w, http.StatusOK, commondto.MessageResponse{
 		Title:   "Email Resend",
 		Message: "Verification email sent successfully",
 	})
@@ -171,8 +169,7 @@ func RefreshTokenHandler(writer http.ResponseWriter, request *http.Request) {
 		return
 	}
 
-	refreshToken := refreshCookie.Value
-	logger.Log.Info("Refresh token value: ", zap.String("Refresh Token......",refreshToken))
+	refreshToken := refreshCookie.Value	
 
 	if refreshToken == "" {
 		errors.ErrorResponse(writer, request, errors.UnauthorizedError("refresh token missing; please login again"))
@@ -194,7 +191,7 @@ func RefreshTokenHandler(writer http.ResponseWriter, request *http.Request) {
 	utils.SetAuthCookies(writer, newTokenPair.AccessToken, newTokenPair.RefreshToken, services.AccessTokenDuration, services.RefreshTokenDuration)
 
 	// Return new access token in body
-	utils.WriteJSON(writer, http.StatusOK, dto.MessageResponse{
+	utils.WriteJSON(writer, http.StatusOK, commondto.MessageResponse{
 		Title:       "Token Refresh",
 		Message:     "Token refreshed successfully",
 		AccessToken: newTokenPair.AccessToken,
@@ -234,14 +231,14 @@ func InitiateOAuthHandler(writer http.ResponseWriter, request *http.Request) {
 	vars := mux.Vars(request)
 	provider := vars["provider"]
 
-	// 1. Generate state
-	state, err := utils.GenerateToken()
-	if err != nil {
-		errors.ErrorResponse(writer, request, errors.InternalError(err))
+	// Generate state and provider auth URL using service helper
+	state, authURL, appErr := services.GenerateOAuthStateAndURL(provider)
+	if appErr != nil {
+		errors.ErrorResponse(writer, request, appErr)
 		return
 	}
 
-	// 2. Set cookie with state
+	// Set cookie with state
 	cfg := config.LoadConfig()
 	cookie := &http.Cookie{
 		Name:     "oauth_state",
@@ -257,21 +254,7 @@ func InitiateOAuthHandler(writer http.ResponseWriter, request *http.Request) {
 	}
 	http.SetCookie(writer, cookie)
 
-	// 3. Get Auth URL
-	var authURL string
-	switch provider {
-	case "google":
-		authURL = services.GetGoogleAuthURL(state)
-	case "facebook":
-		authURL = services.GetFacebookAuthURL(state)
-	default:
-		errors.ErrorResponse(writer, request, errors.ValidationError("unsupported provider"))
-		return
-	}
-
-	utils.WriteJSON(writer, http.StatusOK, dto.OAuthLoginResponse{
-		URL: authURL,
-	})
+	utils.WriteJSON(writer, http.StatusOK, dto.OAuthLoginResponse{URL: authURL})
 }
 
 // VerifyOAuthHandler handles the callback verification from frontend (code & state)
@@ -308,28 +291,11 @@ func VerifyOAuthHandler(writer http.ResponseWriter, request *http.Request) {
 		Secure:   isSecure,
 	})
 
-	// 2. Exchange Code
-	var email, name, picture string
-	
-	switch provider {
-	case "google":
-		gUser, err := services.ExchangeGoogleCode(input.Code)
-		if err != nil {
-			errors.ErrorResponse(writer, request, errors.UnauthorizedError(err.Error()))
-			return
-		}
-		email = gUser.Email
-		name = gUser.Name
-		picture = gUser.Picture
-	default:
-		errors.ErrorResponse(writer, request, errors.ValidationError("unsupported provider"))
-		return		
-	}
-
+	// 2. Handle provider callback (exchange code, create/find user, generate tokens)
 	ip := utils.ExtractClientIP(request)
 	ua := request.Header.Get("User-Agent")
-	
-	user, tokens, appErr := services.OAuthLogin(request.Context(), email, name, picture, ip, ua)
+
+	user, tokens, appErr := services.HandleOAuthCallback(request.Context(), provider, input.Code, ip, ua)
 	if appErr != nil {
 		errors.ErrorResponse(writer, request, appErr)
 		return
@@ -362,7 +328,7 @@ func ForgotPasswordHandler(writer http.ResponseWriter, request *http.Request) {
 	}
 
 	// Always return success to avoid email enumeration
-	utils.WriteJSON(writer, http.StatusOK, dto.MessageResponse{
+	utils.WriteJSON(writer, http.StatusOK, commondto.MessageResponse{
 		Title:   "Password Reset",
 		Message: "A password reset link has been sent to your email",
 	})
@@ -396,7 +362,7 @@ func ResetPasswordHandler(writer http.ResponseWriter, request *http.Request) {
 		return
 	}
 
-	utils.WriteJSON(writer, http.StatusOK, dto.MessageResponse{
+	utils.WriteJSON(writer, http.StatusOK, commondto.MessageResponse{
 		Title:   "Password Reset",
 		Message: "Your password has been reset successfully. Please login with your new password",
 	})

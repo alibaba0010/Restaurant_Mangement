@@ -12,8 +12,11 @@ type SignupInput struct {
 	Email           string `json:"email" validate:"required,email"`
 	Password        string `json:"password" validate:"required,min=6,max=18,password_special"`
 	ConfirmPassword string `json:"confirmPassword" validate:"required,eqfield=Password"`
-	Role            types.UserRole `json:"role" validate:"omitempty,oneof=user admin management"`
-
+}
+// Response is a generic API response envelope used across handlers.
+type SignUpResponse struct {
+	Title string      `json:"title"`
+	Data  SigninData `json:"data"`
 }
 
 type SigninInput struct {
@@ -41,12 +44,8 @@ type SigninData struct {
 	AccessToken string `json:"access_token,omitempty"`
 }
 
-// Response is a generic API response envelope used across handlers.
-type SignUpResponse struct {
-	Title string      `json:"title"`
-	Data  SigninData `json:"data"`
-}
 
+// user payload stored in redis during signup
 type VerificationPayload struct {
 	ID       string         `json:"id"`
 	Name     string         `json:"name"`
@@ -77,6 +76,11 @@ type ResetPasswordInput struct {
 	Token           string `json:"token" validate:"required"`
 	Password        string `json:"password" validate:"required,min=6,max=18,password_special"`
 	ConfirmPassword string `json:"confirmPassword" validate:"required,eqfield=Password"`
+}
+
+// ResendVerificationInput is the payload for requesting a resend of verification email
+type ResendVerificationInput struct {
+    Email string `json:"email" validate:"required,email"`
 }
 
 // RegisterValidators registers custom validators on the provided validator instance.

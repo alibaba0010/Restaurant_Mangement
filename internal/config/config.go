@@ -44,6 +44,7 @@ type Config struct {
 	AWS_REGION              string
 	AWS_BUCKET_NAME         string
 	AWS_CLOUDFRONT_DOMAIN   string
+	REDPANDA_BROKERS        string
 }
 
 func LoadConfig() Config {
@@ -82,6 +83,7 @@ func LoadConfig() Config {
 			AWS_REGION:              getEnv("AWS_REGION", "us-east-1"),
 			AWS_BUCKET_NAME:         getEnv("AWS_BUCKET_NAME", ""),
 			AWS_CLOUDFRONT_DOMAIN:   getEnv("AWS_CLOUDFRONT_DOMAIN", ""),
+			REDPANDA_BROKERS:        getEnv("REDPANDA_BROKERS", "localhost:9092"),
 		}
 	})
 	return cfg
