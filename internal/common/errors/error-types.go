@@ -62,3 +62,20 @@ func InternalError(err error) *AppError {
 func RouteNotExist() *AppError {
 	return New("Route Error", "Route does not exist", http.StatusNotFound, nil)
 }
+
+// RateLimitError returns an AppError for rate limit exceeded
+func RateLimitError() *AppError {
+	return New("Rate Limit Exceeded", "Too many requests. Please try again later", http.StatusTooManyRequests, nil)
+}
+
+// CORSError returns an AppError for CORS policy violations
+func CORSError(origin string) *AppError {
+	message := fmt.Sprintf("CORS policy violation: origin '%s' is not allowed", origin)
+	return New("CORS Error", message, http.StatusForbidden, nil)
+}
+
+// TransactionError returns an AppError for transaction-related failures
+func TransactionError(operation string, err error) *AppError {
+	message := fmt.Sprintf("Database transaction failed while %s. Please try again later", operation)
+	return New("Transaction Error", message, http.StatusInternalServerError, err)
+}

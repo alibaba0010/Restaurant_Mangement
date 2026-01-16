@@ -44,20 +44,6 @@ func (r UserRole) HasPermission(requiredRole UserRole) bool {
 	}
 }
 
-// AllRoles returns all valid roles
-func AllRoles() []UserRole {
-	return []UserRole{RoleUser, RoleManagement, RoleAdmin}
-}
-
-// AllRolesAsStrings returns all valid roles as strings
-func AllRolesAsStrings() []string {
-	return []string{
-		string(RoleUser),
-		string(RoleManagement),
-		string(RoleAdmin),
-	}
-}
-
 // ToUserRole converts a string to UserRole
 func ToUserRole(s string) (UserRole, bool) {
 	role := UserRole(s)

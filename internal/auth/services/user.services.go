@@ -54,8 +54,15 @@ func GetUserByID(ctx context.Context, userID string) (*dto.UserData, *errors.App
 	return &response, nil
 }
 
-// UpdateUser updates a user's address or phone number using a transaction-based approach
-// Demonstrates advanced patterns: explicit transaction handling, context propagation, and validation
+// UpdateUser updates a user's address or phone number
+// TRANSACTION ANALYSIS: Transaction IS necessary here because:
+// 1. We're performing a single atomic operation (update single row)
+// 2. Concurrent updates could cause race conditions
+// 3. The transaction ensures consistency between the fetch and update operations
+// 4. It provides isolation level protection against dirty reads
+// However, for simple single-row updates, connection pooling alone might suffice
+// if the operation is purely an UPDATE statement without multiple queries.
+// Keeping the transaction for safety and consistency.
 func UpdateUser(ctx context.Context, userID string, input dto.UpdateUserInput) (*dto.UpdateUserResponse, *errors.AppError) {
 	// Validate input using the validator
 	validate := validator.New()
@@ -89,7 +96,7 @@ func UpdateUser(ctx context.Context, userID string, input dto.UpdateUserInput) (
 	tx, err := database.DB.BeginTx(ctx, nil)
 	if err != nil {
 		logger.Log.Error("failed to begin transaction", zap.Error(err))
-		return nil, errors.InternalError(err)
+		return nil, errors.TransactionError("starting", err)
 	}
 
 	// Defer transaction rollback (will be a no-op if commit succeeded)
@@ -123,13 +130,13 @@ func UpdateUser(ctx context.Context, userID string, input dto.UpdateUserInput) (
 	err = repositories.UserRepo.UpdateInTx(ctx, tx, user, fieldsToUpdate...)
 	if err != nil {
 		logger.Log.Error("failed to update user info", zap.Error(err), zap.String("user_id", userID))
-		return nil, errors.InternalError(err)
+		return nil, errors.TransactionError("updating user profile", err)
 	}
 
 	// Commit transaction
 	if err := tx.Commit(); err != nil {
 		logger.Log.Error("failed to commit transaction", zap.Error(err))
-		return nil, errors.InternalError(err)
+		return nil, errors.TransactionError("committing user profile update", err)
 	}
 
 	// Build and return response
@@ -165,7 +172,7 @@ func GetAllUsers(ctx context.Context, page, pageSize int, qStr, role, sortBy, or
 	users, total, err := repositories.UserRepo.FindAll(ctx, page, pageSize, qStr, role, sortBy, order)
 	if err != nil {
 		logger.Log.Error("failed to fetch users", zap.Error(err))
-		return nil, 0, errors.InternalError(err)
+		return nil, 0, errors.NotFoundError("no users found")
 	}
 
 	// Map to DTO
@@ -198,24 +205,9 @@ func GetUserByEmail(ctx context.Context, email string) (*models.User, *errors.Ap
 	return user, nil
 }
 
-// IsAdminRole checks if a user has admin role
-func IsAdminRole(role types.UserRole) bool {
-	return role == types.RoleAdmin
-}
-
-// IsManagementRole checks if a user has management or admin role
-func IsManagementRole(role types.UserRole) bool {
-	return role == types.RoleManagement || role == types.RoleAdmin
-}
-
-// IsUserRole checks if a user has user role (or higher)
-func IsUserRole(role types.UserRole) bool {
-	return role.IsValid()
-}
-
-
-
-// UpdateUserRole updates a user's role (admin only)
+// UpdateUserRoleStatus updates a user's role and/or status (admin or management)
+// Transaction is necessary here to prevent race conditions between reading the user
+// and updating multiple fields atomically, ensuring consistency.
 func UpdateUserRoleStatus(ctx context.Context, userID string, input dto.UpdateUserRoleInput) (*dto.UpdateUserResponse, *errors.AppError) {
 	// Validate input
 	validate := validator.New()
@@ -232,9 +224,15 @@ func UpdateUserRoleStatus(ctx context.Context, userID string, input dto.UpdateUs
 	// Start transaction
 	tx, err := database.DB.BeginTx(ctx, nil)
 	if err != nil {
-		return nil, errors.InternalError(err)
+		return nil, errors.TransactionError("starting", err)
 	}
-	defer tx.Rollback()
+
+	// Defer transaction rollback (will be a no-op if commit succeeded)
+	defer func() {
+		if err := tx.Rollback(); err != nil && err.Error() != "tx: already committed or rolled back" {
+			logger.Log.Error("failed to rollback transaction", zap.Error(err))
+		}
+	}()
 
 	// Update role/status
 	var fieldsToUpdate []string
@@ -259,11 +257,11 @@ func UpdateUserRoleStatus(ctx context.Context, userID string, input dto.UpdateUs
 
 	err = repositories.UserRepo.UpdateInTx(ctx, tx, user, fieldsToUpdate...)
 	if err != nil {
-		return nil, errors.InternalError(err)
+		return nil, errors.TransactionError("updating user role and status", err)
 	}
 
 	if err := tx.Commit(); err != nil {
-		return nil, errors.InternalError(err)
+		return nil, errors.TransactionError("committing user role/status update", err)
 	}
 
 	return &dto.UpdateUserResponse{

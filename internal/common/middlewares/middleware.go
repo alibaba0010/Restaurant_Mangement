@@ -45,6 +45,19 @@ func CORS(allowedOrigin string) func(http.Handler) http.Handler {
 				}
 			}
 
+			// Handle CORS rejection for non-allowed origins
+			if !shouldAllow && origin != "" && allowedOrigin != "*" && allowedOrigin != "" {
+				logger.Log.Warn("CORS policy violation", zap.String("origin", origin), zap.String("allowed", allowedOrigin), zap.String("path", r.URL.Path))
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusForbidden)
+				appErr := errors.CORSError(origin)
+				_ = json.NewEncoder(w).Encode(map[string]interface{}{
+					"title":   appErr.Title,
+					"message": appErr.Message,
+				})
+				return
+			}
+
 			if shouldAllow && origin != "" {
 				w.Header().Set("Access-Control-Allow-Origin", origin)
 			} else if allowedOrigin == "*" {
@@ -130,10 +143,14 @@ func RateLimit(rate int, burst int) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if !tb.Allow() {
-				logger.Log.Warn("rate limit exceeded", zap.String("path", r.URL.Path))
+				logger.Log.Warn("rate limit exceeded", zap.String("path", r.URL.Path), zap.String("method", r.Method))
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusTooManyRequests)
-				_ = json.NewEncoder(w).Encode(map[string]string{"title": "Too Many Requests", "message": "rate limit exceeded"})
+				appErr := errors.RateLimitError()
+				_ = json.NewEncoder(w).Encode(map[string]interface{}{
+					"title":   appErr.Title,
+					"message": appErr.Message,
+				})
 				return
 			}
 			// additional production checks could go here (if needed)
