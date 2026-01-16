@@ -27,7 +27,7 @@ type AuthenticatedUser struct {
 	Role   types.UserRole
 }
 
-// AuthMiddleware validates access token from Authorization header.
+// AuthMiddleware validates access token from Authorization header or request cookie.
 // On success: stores claims in context (UserClaimsKey)
 // On fail: returns 401 with specific error (expired vs invalid)
 func AuthMiddleware(next http.Handler) http.Handler {
@@ -47,25 +47,6 @@ func AuthMiddleware(next http.Handler) http.Handler {
 		}
 
 		errors.ErrorResponse(writer, request, appErr)
-	})
-}
-
-// OptionalAuthMiddleware attempts to validate access token but proceeds even if missing or invalid.
-// Claims are stored in context ONLY if the token is valid.
-func OptionalAuthMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		tokenString := extractToken(request)
-
-		if tokenString != "" {
-			claims, appErr := services.VerifyAccessToken(tokenString)
-			if appErr == nil {
-				ctx := context.WithValue(request.Context(), UserClaimsKey, claims)
-				next.ServeHTTP(writer, request.WithContext(ctx))
-				return
-			}
-		}
-
-		next.ServeHTTP(writer, request)
 	})
 }
 

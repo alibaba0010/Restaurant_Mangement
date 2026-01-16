@@ -54,12 +54,6 @@ type VerificationPayload struct {
 	Role     types.UserRole `json:"role"`
 }
 
-// UpdateUserInput is used for updating a user's address or phone number
-type UpdateUserInput struct {
-	Address     string `json:"address" validate:"omitempty,min=5,max=255"`
-	PhoneNumber string `json:"phone_number" validate:"omitempty,min=10,max=15"`
-}
-
 // LogoutResponse is returned after a successful logout
 type LogoutResponse struct {
 	Title   string `json:"title"`

@@ -415,7 +415,6 @@ func RefreshTokenWithRotation(ctx context.Context, refreshToken, ip, userAgent s
 	}
 
 	// Validate IP and User-Agent if they were recorded with the token
-	// Strict equality check is used here; adjust policy if you need more lenient matching.
 	if rt.IPAddress != "" && ip != "" && strings.TrimSpace(rt.IPAddress) != strings.TrimSpace(ip) {
 		logger.Log.Warn("refresh token IP mismatch", zap.String("expected", rt.IPAddress), zap.String("got", ip))
 		return nil, errors.UnauthorizedError("refresh token validation failed")

@@ -22,7 +22,7 @@ func CurrentUserHandler(writer http.ResponseWriter, request *http.Request) {
 		return
 	}
 
-	user, appErr := services.GetCurrentUserByID(request.Context(), authenticatedUser.UserID)
+	user, appErr := services.GetUserByID(request.Context(), authenticatedUser.UserID)
 	if appErr != nil {
 		errors.ErrorResponse(writer, request, appErr)
 		return
@@ -41,7 +41,7 @@ func GetUserByIDHandler(writer http.ResponseWriter, request *http.Request) {
 		return
 	}
 
-	user, appErr := services.GetUserByIDPublic(request.Context(), userID)
+	user, appErr := services.GetUserByID(request.Context(), userID)
 	if appErr != nil {
 		errors.ErrorResponse(writer, request, appErr)
 		return

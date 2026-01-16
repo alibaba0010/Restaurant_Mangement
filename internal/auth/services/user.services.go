@@ -16,9 +16,9 @@ import (
 	"go.uber.org/zap"
 )
 
-// mapToCurrentUserResponse converts a user model to a current user DTO
-func mapToCurrentUserResponse(user *models.User) dto.CurrentUserResponse {
-	return dto.CurrentUserResponse{
+// mapToCurrentUserResponse converts a user model to a user DTO
+func mapToCurrentUserResponse(user *models.User) dto.UserData {
+	return dto.UserData{
 		ID:          user.ID,
 		Name:        user.Name,
 		Email:       user.Email,
@@ -37,95 +37,21 @@ func getUserByID(ctx context.Context, userID string) (*models.User, *errors.AppE
 	user, err := repositories.UserRepo.FindByID(ctx, userID)
 	if err != nil {
 		logger.Log.Debug("user not found by id", zap.String("user_id", userID))
-		return nil, errors.InternalError(err)
+		return nil, errors.NotFoundError("user not found")
 	}
 	return user, nil
 }
 
-// GetCurrentUserByID retrieves a user from the database by ID and returns formatted response
-// Uses context for cancellation and timeout support
-func GetCurrentUserByID(ctx context.Context, userID string) (*dto.CurrentUserResponse, *errors.AppError) {
-	user, appErr := getUserByID(ctx, userID)
+// GetUserByID retrieves user information by ID for either current user or by admin 
+func GetUserByID(ctx context.Context, userID string) (*dto.UserData, *errors.AppError) {
+		user, appErr := getUserByID(ctx, userID)
 	if appErr != nil {
 		logger.Log.Error("failed to fetch user from database", zap.String("user_id", userID))
 		return nil, appErr
 	}
 
 	response := mapToCurrentUserResponse(user)
-	logger.Log.Debug("user retrieved from database", zap.String("user_id", userID), zap.String("role", string(user.Role)))
 	return &response, nil
-}
-
-// GetAllUsers returns a paginated, filtered and sorted list of users.
-// Supports search by name/email (`q`), role filter, and sorting by allowed columns.
-func GetAllUsers(ctx context.Context, page, pageSize int, qStr, role, sortBy, order string) ([]dto.CurrentUserResponse, int64, *errors.AppError) {
-	if page <= 0 {
-		page = 1
-	}
-	if pageSize <= 0 || pageSize > 100 {
-		pageSize = 20
-	}
-
-	// Sorting validation
-	allowedSort := map[string]bool{"name": true, "email": true, "created_at": true, "role": true}
-	if !allowedSort[sortBy] {
-		sortBy = "created_at"
-	}
-	if strings.ToLower(order) != "asc" {
-		order = "DESC"
-	} else {
-		order = "ASC"
-	}
-
-	users, total, err := repositories.UserRepo.FindAll(ctx, page, pageSize, qStr, role, sortBy, order)
-	if err != nil {
-		logger.Log.Error("failed to fetch users", zap.Error(err))
-		return nil, 0, errors.InternalError(err)
-	}
-
-	// Map to DTO
-	result := make([]dto.CurrentUserResponse, 0, len(users))
-	for _, u := range users {
-		result = append(result, mapToCurrentUserResponse(&u))
-	}
-
-	return result, total, nil
-}
-
-// ValidateUserRole checks if a user role is valid
-func ValidateUserRole(roleStr string) (types.UserRole, *errors.AppError) {
-	role, isValid := types.ToUserRole(roleStr)
-	if !isValid {
-		logger.Log.Warn("invalid user role", zap.String("role", roleStr))
-		return "", errors.ValidationError("invalid user role: " + roleStr)
-	}
-	return role, nil
-}
-
-// GetUserByEmail retrieves a user by email address
-func GetUserByEmail(ctx context.Context, email string) (*models.User, *errors.AppError) {
-	user, err := repositories.UserRepo.FindByEmail(ctx, email)
-	if err != nil {
-		logger.Log.Debug("user not found by email", zap.String("email", email))
-		return nil, errors.InternalError(err)
-	}
-
-	return user, nil
-}
-
-// IsAdminRole checks if a user has admin role
-func IsAdminRole(role types.UserRole) bool {
-	return role == types.RoleAdmin
-}
-
-// IsManagementRole checks if a user has management or admin role
-func IsManagementRole(role types.UserRole) bool {
-	return role == types.RoleManagement || role == types.RoleAdmin
-}
-
-// IsUserRole checks if a user has user role (or higher)
-func IsUserRole(role types.UserRole) bool {
-	return role.IsValid()
 }
 
 // UpdateUser updates a user's address or phone number using a transaction-based approach
@@ -215,10 +141,79 @@ func UpdateUser(ctx context.Context, userID string, input dto.UpdateUserInput) (
 	return response, nil
 }
 
-// GetUserByIDPublic retrieves public user information by ID
-func GetUserByIDPublic(ctx context.Context, userID string) (*models.User, *errors.AppError) {
-	return getUserByID(ctx, userID)
+// GetAllUsers returns a paginated, filtered and sorted list of users.
+// Supports search by name/email (`q`), role filter, and sorting by allowed columns.
+func GetAllUsers(ctx context.Context, page, pageSize int, qStr, role, sortBy, order string) ([]dto.UserData, int64, *errors.AppError) {
+	if page <= 0 {
+		page = 1
+	}
+	if pageSize <= 0 || pageSize > 100 {
+		pageSize = 20
+	}
+
+	// Sorting validation
+	allowedSort := map[string]bool{"name": true, "email": true, "created_at": true, "role": true}
+	if !allowedSort[sortBy] {
+		sortBy = "created_at"
+	}
+	if strings.ToLower(order) != "asc" {
+		order = "DESC"
+	} else {
+		order = "ASC"
+	}
+
+	users, total, err := repositories.UserRepo.FindAll(ctx, page, pageSize, qStr, role, sortBy, order)
+	if err != nil {
+		logger.Log.Error("failed to fetch users", zap.Error(err))
+		return nil, 0, errors.InternalError(err)
+	}
+
+	// Map to DTO
+	result := make([]dto.UserData, 0, len(users))
+	for _, u := range users {
+		result = append(result, mapToCurrentUserResponse(&u))
+	}
+
+	return result, total, nil
 }
+
+// ValidateUserRole checks if a user role is valid
+func ValidateUserRole(roleStr string) (types.UserRole, *errors.AppError) {
+	role, isValid := types.ToUserRole(roleStr)
+	if !isValid {
+		logger.Log.Warn("invalid user role", zap.String("role", roleStr))
+		return "", errors.ValidationError("invalid user role: " + roleStr)
+	}
+	return role, nil
+}
+
+// GetUserByEmail retrieves a user by email address
+func GetUserByEmail(ctx context.Context, email string) (*models.User, *errors.AppError) {
+	user, err := repositories.UserRepo.FindByEmail(ctx, email)
+	if err != nil {
+		logger.Log.Debug("user not found by email", zap.String("email", email))
+		return nil, errors.InternalError(err)
+	}
+
+	return user, nil
+}
+
+// IsAdminRole checks if a user has admin role
+func IsAdminRole(role types.UserRole) bool {
+	return role == types.RoleAdmin
+}
+
+// IsManagementRole checks if a user has management or admin role
+func IsManagementRole(role types.UserRole) bool {
+	return role == types.RoleManagement || role == types.RoleAdmin
+}
+
+// IsUserRole checks if a user has user role (or higher)
+func IsUserRole(role types.UserRole) bool {
+	return role.IsValid()
+}
+
+
 
 // UpdateUserRole updates a user's role (admin only)
 func UpdateUserRoleStatus(ctx context.Context, userID string, input dto.UpdateUserRoleInput) (*dto.UpdateUserResponse, *errors.AppError) {
