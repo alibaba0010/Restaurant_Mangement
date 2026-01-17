@@ -28,7 +28,7 @@ func (r *RestaurantRepository) FindByID(ctx context.Context, id string) (*models
 	return restaurant, nil
 }
 // FindAll retrieves restaurants with pagination, filtering, and sorting
-func (r *RestaurantRepository) FindAll(ctx context.Context, page, pageSize int, qStr string, userID *string, sortBy, order string) ([]models.Restaurant, int64, error) {
+func (r *RestaurantRepository) FindAll(ctx context.Context, page, pageSize int, qStr string, userID *string, status *string, sortBy, order string) ([]models.Restaurant, int64, error) {
 	restaurants := make([]models.Restaurant, 0)
 	sel := database.DB.NewSelect().Model(&restaurants)
 
@@ -39,6 +39,10 @@ func (r *RestaurantRepository) FindAll(ctx context.Context, page, pageSize int, 
 
 	if userID != nil {
 		sel = sel.Where("user_id = ?", *userID)
+	}
+
+	if status != nil {
+		sel = sel.Where("status = ?", *status)
 	}
 
 	total, err := sel.Count(ctx)

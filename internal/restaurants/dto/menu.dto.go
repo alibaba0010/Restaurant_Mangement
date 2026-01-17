@@ -4,27 +4,27 @@ import commondto "github.com/alibaba0010/postgres-api/internal/common/dto"
 
 // CreateMenuInput represents the input for creating a menu item
 type CreateMenuInput struct {
-	Name            string   `json:"name" validate:"required"`
-	Description     string   `json:"description"`
+	Name            string   `json:"name" validate:"required,min=2,max=100"`
+	Description     string   `json:"description" validate:"omitempty,max=500"`
 	Price           float64  `json:"price" validate:"required,gt=0"`
-	ImageURLs       []string `json:"image_urls"`
-	VideoURL        string   `json:"video_url"`
+	ImageURLs       []string `json:"image_urls" validate:"omitempty,dive,url"`
+	VideoURL        string   `json:"video_url" validate:"omitempty,url"`
 	RestaurantID    string   `json:"restaurant_id" validate:"required,uuid"`
 	IsAvailable     bool     `json:"is_available"`
-	PrepTimeMinutes int      `json:"prep_time_minutes"`
-	Calories        int      `json:"calories"`
+	PrepTimeMinutes int      `json:"prep_time_minutes" validate:"omitempty,min=0"`
+	Calories        int      `json:"calories" validate:"omitempty,min=0"`
 }
 
 // UpdateMenuInput represents the input for updating a menu item
 type UpdateMenuInput struct {
-	Name            *string  `json:"name"`
-	Description     *string  `json:"description"`
+	Name            *string  `json:"name" validate:"omitempty,min=2,max=100"`
+	Description     *string  `json:"description" validate:"omitempty,max=500"`
 	Price           *float64 `json:"price" validate:"omitempty,gt=0"`
-	ImageURLs       []string `json:"image_urls"`
-	VideoURL        *string  `json:"video_url"`
+	ImageURLs       []string `json:"image_urls" validate:"omitempty,dive,url"`
+	VideoURL        *string  `json:"video_url" validate:"omitempty,url"`
 	IsAvailable     *bool    `json:"is_available"`
-	PrepTimeMinutes *int     `json:"prep_time_minutes"`
-	Calories        *int     `json:"calories"`
+	PrepTimeMinutes *int     `json:"prep_time_minutes" validate:"omitempty,min=0"`
+	Calories        *int     `json:"calories" validate:"omitempty,min=0"`
 }
 
 // MenuResponse represents the response structure for a menu item

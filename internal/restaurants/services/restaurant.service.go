@@ -15,6 +15,7 @@ import (
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 )
+
 // MapRestaurantToResponse maps Restaurant model to RestaurantResponse DTO
 func MapRestaurantToResponse(r *models.Restaurant) *dto.RestaurantResponse {
 	var userIDStr *string
@@ -44,8 +45,8 @@ func MapRestaurantToResponse(r *models.Restaurant) *dto.RestaurantResponse {
 // user parameter is required and should be passed from the authentication middleware
 func CreateRestaurant(ctx context.Context, input dto.CreateRestaurantInput, user *guards.AuthenticatedUser) (*dto.RestaurantResponse, *errors.AppError) {
 	// Validate input
-	if validationErrors := utils.ValidateStruct(input); len(validationErrors) > 0 {
-		return nil, errors.ValidationErrors(validationErrors)
+	if err := utils.ValidateAndError(input); err != nil {
+		return nil, err
 	}
 
 	// Sanitize string inputs to prevent injection attacks
@@ -112,7 +113,7 @@ func GetRestaurantByID(ctx context.Context, id string) (*dto.RestaurantResponse,
 }
 
 // GetAllRestaurants retrieves a paginated list of restaurants
-func GetAllRestaurants(ctx context.Context, page, pageSize int, qStr string, userID *string, sortBy, order string) ([]dto.RestaurantResponse, int64, *errors.AppError) {
+func GetAllRestaurants(ctx context.Context, page, pageSize int, qStr string, userID *string, status *string, sortBy, order string) ([]dto.RestaurantResponse, int64, *errors.AppError) {
 	if page <= 0 {
 		page = 1
 	}
@@ -120,7 +121,7 @@ func GetAllRestaurants(ctx context.Context, page, pageSize int, qStr string, use
 		pageSize = 20
 	}
 
-	restaurants, total, err := repositories.RestaurantRepo.FindAll(ctx, page, pageSize, qStr, userID, sortBy, order)
+	restaurants, total, err := repositories.RestaurantRepo.FindAll(ctx, page, pageSize, qStr, userID, status, sortBy, order)
 	if err != nil {
 		return nil, 0, errors.InternalError(err)
 	}
@@ -141,17 +142,18 @@ func UpdateRestaurant(ctx context.Context, id string, input dto.UpdateRestaurant
 		return nil, errors.NotFoundError("restaurant not found")
 	}
 
+	// Sanitize string inputs
 	if input.Name != "" {
-		restaurant.Name = input.Name
+		restaurant.Name = strings.TrimSpace(input.Name)
 	}
 	if input.Description != "" {
-		restaurant.Description = input.Description
+		restaurant.Description = strings.TrimSpace(input.Description)
 	}
 	if input.Address != "" {
-		restaurant.Address = input.Address
+		restaurant.Address = strings.TrimSpace(input.Address)
 	}
 	if input.AvatarURL != "" {
-		restaurant.AvatarURL = input.AvatarURL
+		restaurant.AvatarURL = strings.TrimSpace(input.AvatarURL)
 	}
 	if input.Status != "" {
 		restaurant.Status = models.RestaurantStatus(input.Status)

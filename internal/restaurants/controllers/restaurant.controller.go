@@ -9,6 +9,7 @@ import (
 	"github.com/alibaba0010/postgres-api/internal/common/guards"
 	"github.com/alibaba0010/postgres-api/internal/common/types"
 	"github.com/alibaba0010/postgres-api/internal/restaurants/dto"
+	"github.com/alibaba0010/postgres-api/internal/restaurants/models"
 	"github.com/alibaba0010/postgres-api/internal/restaurants/services"
 	"github.com/alibaba0010/postgres-api/internal/utils"
 	"github.com/gorilla/mux"
@@ -23,8 +24,8 @@ func CreateRestaurantHandler(writer http.ResponseWriter, request *http.Request) 
 	}
 	
 	// Validate input
-	if validationErrors := utils.ValidateStruct(input); validationErrors != nil {
-		errors.ErrorResponse(writer, request, errors.ValidationError(validationErrors[0]))
+	if err := utils.ValidateAndError(input); err != nil {
+		errors.ErrorResponse(writer, request, err)
 		return
 	}
 
@@ -85,30 +86,40 @@ func ListRestaurantsHandler(writer http.ResponseWriter, request *http.Request) {
 	params := utils.ParseListParams(request)
 
 	// Filter logic based on user role
+	// Filter logic based on user role
 	var filterUserID *string
+	var filterStatus *string
+	
+	activeStatus := string(models.RestaurantStatusActive)
+
 	user := guards.ExtractAuthenticatedUser(request)
 
 	if user != nil {
 		switch user.Role {
 		case types.RoleManagement:
-			// Management -> Only own restaurants
+			// Management -> Only own restaurants, but can see all statuses (e.g. pending/blocked)
 			filterUserID = &user.UserID
+			filterStatus = nil 
 		case types.RoleAdmin:
-			// Admin -> All restaurants (Admin View)
+			// Admin -> All restaurants, all statuses
 			filterUserID = nil
+			filterStatus = nil
 		case types.RoleUser:
-			// User -> All restaurants (Customer View)
+			// User -> All restaurants, but ONLY Active
 			filterUserID = nil
+			filterStatus = &activeStatus
 		default:
-			// Unknown role -> All restaurants (Public View fallback)
+			// Fallback -> Active only
 			filterUserID = nil
+			filterStatus = &activeStatus
 		}
 	} else {
-		// Unauthenticated -> All restaurants (Public View)
+		// Unauthenticated -> All restaurants, Active only
 		filterUserID = nil
+		filterStatus = &activeStatus
 	}
 
-	data, total, err := services.GetAllRestaurants(request.Context(), params.Page, params.PageSize, params.Query, filterUserID, params.SortBy, params.Order)
+	data, total, err := services.GetAllRestaurants(request.Context(), params.Page, params.PageSize, params.Query, filterUserID, filterStatus, params.SortBy, params.Order)
 	if err != nil {
 		errors.ErrorResponse(writer, request, err)
 		return
@@ -137,6 +148,12 @@ func UpdateRestaurantHandler(writer http.ResponseWriter, request *http.Request) 
 		return
 	}
 
+	// Validate input
+	if err := utils.ValidateAndError(input); err != nil {
+		errors.ErrorResponse(writer, request, err)
+		return
+	}
+
 	user := guards.ExtractAuthenticatedUser(request)
 	if user == nil {
 		errors.ErrorResponse(writer, request, errors.UnauthorizedError("User not authenticated"))
@@ -150,24 +167,24 @@ func UpdateRestaurantHandler(writer http.ResponseWriter, request *http.Request) 
 		return
 	}
 
+	// Authorization and Input Sanitization
 	switch user.Role {
 	case types.RoleManagement:
-		// Check ownership
+		// 1. Ownership Check
 		if existing.UserID == nil || *existing.UserID != user.UserID {
 			errors.ErrorResponse(writer, request, errors.ForbiddenError("You do not have permission to update this restaurant"))
 			return
 		}
-		// Disallow status updates for management
-		// If input.Status is present and different from existing, blocking it or ignoring it?
-		// User requirement: "management can only get restaurants created by him and update its name, description, address, capacity, delivery/takeaway available"
-		// This implies they CANNOT update status.
-		// We explicitly ignore/clear status if management
+		// 2. Vulnerability Check: Mass Assignment Prevention
+		// Management CANNOT update: Status, UserID (Transfer), Rating
 		input.Status = ""
+		input.UserID = nil
+		input.Rating = nil
+		
 	case types.RoleAdmin:
-		// Admin can update status, so we leave it
+		// Admin can update everything, but typically shouldn't manually update Rating via this endpoint 
+		// unless correcting data. We will allow it for Admin flexibility.
 	default:
-		// Other roles? Assume forbidden if not admin/management caught by middleware,
-		// but explicit check is safer
 		errors.ErrorResponse(writer, request, errors.ForbiddenError("You do not have permission"))
 		return
 	}

@@ -204,6 +204,12 @@ func CreateMenuHandler(writer http.ResponseWriter, request *http.Request) {
 		return
 	}
 
+	// Validate input
+	if err := utils.ValidateAndError(input); err != nil {
+		errors.ErrorResponse(writer, request, err)
+		return
+	}
+
 	user := guards.ExtractAuthenticatedUser(request)
 	if user == nil {
 		errors.ErrorResponse(writer, request, errors.UnauthorizedError("Authentication required"))
@@ -293,6 +299,12 @@ func UpdateMenuHandler(writer http.ResponseWriter, request *http.Request) {
 	var input dto.UpdateMenuInput
 	if err := json.NewDecoder(request.Body).Decode(&input); err != nil {
 		errors.ErrorResponse(writer, request, errors.ValidationError("Invalid request body"))
+		return
+	}
+
+	// Validate input
+	if err := utils.ValidateAndError(input); err != nil {
+		errors.ErrorResponse(writer, request, err)
 		return
 	}
 

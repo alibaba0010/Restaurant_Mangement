@@ -19,6 +19,7 @@ import (
 	"github.com/alibaba0010/postgres-api/internal/restaurants/dto"
 	"github.com/alibaba0010/postgres-api/internal/restaurants/models"
 	"github.com/alibaba0010/postgres-api/internal/restaurants/repositories"
+	"github.com/alibaba0010/postgres-api/internal/utils"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/google/uuid"
@@ -73,10 +74,21 @@ func UploadMenuMedia(ctx context.Context, userID string, filename string, conten
 
 // CreateMenu creates a new menu item
 func CreateMenu(ctx context.Context, input dto.CreateMenuInput) (*dto.MenuResponse, *errors.AppError) {
+	// Validate input
+	if err := utils.ValidateAndError(input); err != nil {
+		return nil, err
+	}
+
 	restaurantID, err := uuid.Parse(input.RestaurantID)
 	if err != nil {
 		return nil, errors.ValidationError("Invalid restaurant ID")
 	}
+
+	// Sanitize
+	input.Name = strings.TrimSpace(input.Name)
+	input.Description = strings.TrimSpace(input.Description)
+	input.VideoURL = strings.TrimSpace(input.VideoURL)
+	// ImageURLs are usually signed URLs or specific paths, but we can trim them too if needed.
 
 	menu := &models.Menu{
 		Name:            input.Name,
@@ -171,11 +183,16 @@ func UpdateMenu(ctx context.Context, id string, input dto.UpdateMenuInput) (*dto
 		return nil, appErr
 	}
 
+	// Validate input
+	if err := utils.ValidateAndError(input); err != nil {
+		return nil, err
+	}
+
 	if input.Name != nil {
-		menu.Name = *input.Name
+		menu.Name = strings.TrimSpace(*input.Name)
 	}
 	if input.Description != nil {
-		menu.Description = *input.Description
+		menu.Description = strings.TrimSpace(*input.Description)
 	}
 	if input.Price != nil {
 		menu.Price = *input.Price
@@ -184,7 +201,7 @@ func UpdateMenu(ctx context.Context, id string, input dto.UpdateMenuInput) (*dto
 		menu.ImageURLs = input.ImageURLs
 	}
 	if input.VideoURL != nil {
-		menu.VideoURL = *input.VideoURL
+		menu.VideoURL = strings.TrimSpace(*input.VideoURL)
 	}
 	if input.IsAvailable != nil {
 		menu.IsAvailable = *input.IsAvailable
