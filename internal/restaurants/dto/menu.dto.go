@@ -45,8 +45,8 @@ type MenuResponse struct {
 
 // MenusListResponse represents the list of menus
 type MenusListResponse struct {
-	Data []MenuResponse           `json:"data"`
-	Meta commondto.PaginationMeta `json:"meta"`
+	Data []MenuResponse       `json:"data"`
+	Meta commondto.CursorMeta `json:"meta"`
 }
 
 // InitiateMultipartUploadInput represents the request to start a multipart upload

@@ -28,7 +28,7 @@ func (r *MenuRepository) FindByID(ctx context.Context, id string) (*models.Menu,
 	return menu, nil
 }
 
-func (r *MenuRepository) FindAll(ctx context.Context, page, pageSize int, queryStr string, restaurantID string, minPrice, maxPrice *float64, isAvailable *bool, sortBy, order string) ([]models.Menu, int64, error) {
+func (r *MenuRepository) FindAll(ctx context.Context, limit int, cursorStr string, queryStr string, restaurantID string, minPrice, maxPrice *float64, isAvailable *bool, sortBy, order string) ([]models.Menu, string, bool, int64, error) {
 	menus := make([]models.Menu, 0)
 	sel := database.DB.NewSelect().Model(&menus)
 
@@ -55,22 +55,71 @@ func (r *MenuRepository) FindAll(ctx context.Context, page, pageSize int, queryS
 
 	total, err := sel.Count(ctx)
 	if err != nil {
-		return nil, 0, err
+		return nil, "", false, 0, err
 	}
 
-	// Sanitize and apply sorting
+	// Sanitize Sort
 	sortBy, order = utils.SanitizeSort(sortBy, order, []string{"created_at", "price", "name", "calories", "prep_time_minutes"}, "created_at")
 
-	err = sel.Order(fmt.Sprintf("%s %s", sortBy, order)).
-		Limit(pageSize).
-		Offset((page - 1) * pageSize).
-		Scan(ctx)
+	// Apply Cursor Filter
+	if cursorStr != "" {
+		decoded, err := utils.DecodeCursor(cursorStr)
+		if err != nil {
+			return nil, "", false, 0, err
+		}
 
-	if err != nil {
-		return nil, 0, err
+		op := ">"
+		if order == "DESC" {
+			op = "<"
+		}
+
+		var cursorVal interface{}
+		switch sortBy {
+		case "created_at":
+			cursorVal = utils.GetCursorValueAsTime(decoded.LastValue)
+		case "price", "calories", "prep_time_minutes": // numeric
+			cursorVal = utils.GetCursorValueAsFloat(decoded.LastValue)
+		default:
+			cursorVal = utils.GetCursorValueAsString(decoded.LastValue)
+		}
+
+		sel = sel.Where(fmt.Sprintf("(%s, id) %s (?, ?)", sortBy, op), cursorVal, decoded.LastID)
 	}
 
-	return menus, int64(total), nil
+	// Order by Sort Column + ID (tie breaker)
+	sel = sel.Order(fmt.Sprintf("%s %s", sortBy, order)).OrderExpr("id " + order)
+
+	err = sel.Limit(limit + 1).Scan(ctx)
+	if err != nil {
+		return nil, "", false, 0, err
+	}
+
+	hasMore := false
+	nextCursor := ""
+	if len(menus) > limit {
+		hasMore = true
+		menus = menus[:limit]
+		lastItem := menus[limit-1]
+
+		var lastVal interface{}
+		switch sortBy {
+		case "created_at":
+			lastVal = lastItem.CreatedAt
+		case "price":
+			lastVal = lastItem.Price
+		case "name":
+			lastVal = lastItem.Name
+		case "calories":
+			lastVal = lastItem.Calories
+		case "prep_time_minutes":
+			lastVal = lastItem.PrepTimeMinutes
+		default:
+			lastVal = lastItem.CreatedAt
+		}
+		nextCursor = utils.EncodeCursor(lastVal, lastItem.ID.String())
+	}
+
+	return menus, nextCursor, hasMore, int64(total), nil
 }
 
 func (r *MenuRepository) Update(ctx context.Context, menu *models.Menu) error {

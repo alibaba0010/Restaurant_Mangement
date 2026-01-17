@@ -120,16 +120,13 @@ func GetMenuByID(ctx context.Context, id string) (*models.Menu, *errors.AppError
 }
 
 // ListMenus retrieves a paginated list of menu items with filters/cache
-func ListMenus(ctx context.Context, page, pageSize int, queryStr string, restaurantID string, minPrice, maxPrice *float64, isAvailable *bool, sortBy, order string) ([]dto.MenuResponse, int64, *errors.AppError) {
-	if page <= 0 {
-		page = 1
-	}
-	if pageSize <= 0 || pageSize > 100 {
-		pageSize = 20
+func ListMenus(ctx context.Context, limit int, cursor string, queryStr string, restaurantID string, minPrice, maxPrice *float64, isAvailable *bool, sortBy, order string) ([]dto.MenuResponse, string, bool, int64, *errors.AppError) {
+	if limit <= 0 || limit > 100 {
+		limit = 20
 	}
 
 	// Generate Cache Key
-	cacheKeyPayload := fmt.Sprintf("%d:%d:%s:%s:%v:%v:%v:%s:%s", page, pageSize, queryStr, restaurantID, minPrice, maxPrice, isAvailable, sortBy, order)
+	cacheKeyPayload := fmt.Sprintf("%d:%s:%s:%s:%v:%v:%v:%s:%s", limit, cursor, queryStr, restaurantID, minPrice, maxPrice, isAvailable, sortBy, order)
 	hash := sha256.Sum256([]byte(cacheKeyPayload))
 	cacheKey := "menus:list:" + hex.EncodeToString(hash[:])
 
@@ -138,20 +135,22 @@ func ListMenus(ctx context.Context, page, pageSize int, queryStr string, restaur
 		val, err := database.RedisClient.Get(ctx, cacheKey).Result()
 		if err == nil {
 			var cachedResult struct {
-				Menus []dto.MenuResponse `json:"menus"`
-				Total int64              `json:"total"`
+				Menus      []dto.MenuResponse `json:"menus"`
+				NextCursor string             `json:"next_cursor"`
+				HasMore    bool               `json:"has_more"`
+				Total      int64              `json:"total"`
 			}
 			if err := json.Unmarshal([]byte(val), &cachedResult); err == nil {
 				// Cache Hit
-				return cachedResult.Menus, cachedResult.Total, nil
+				return cachedResult.Menus, cachedResult.NextCursor, cachedResult.HasMore, cachedResult.Total, nil
 			}
 		}
 	}
 
 	// 2. Fetch from Repo
-	menus, total, err := repositories.MenuRepo.FindAll(ctx, page, pageSize, queryStr, restaurantID, minPrice, maxPrice, isAvailable, sortBy, order)
+	menus, nextCursor, hasMore, total, err := repositories.MenuRepo.FindAll(ctx, limit, cursor, queryStr, restaurantID, minPrice, maxPrice, isAvailable, sortBy, order)
 	if err != nil {
-		return nil, 0, errors.InternalError(err)
+		return nil, "", false, 0, errors.InternalError(err)
 	}
 
 	responses := make([]dto.MenuResponse, len(menus))
@@ -162,18 +161,22 @@ func ListMenus(ctx context.Context, page, pageSize int, queryStr string, restaur
 	// 3. Set Cache
 	if database.RedisClient != nil {
 		cachedResult := struct {
-			Menus []dto.MenuResponse `json:"menus"`
-			Total int64              `json:"total"`
+			Menus      []dto.MenuResponse `json:"menus"`
+			NextCursor string             `json:"next_cursor"`
+			HasMore    bool               `json:"has_more"`
+			Total      int64              `json:"total"`
 		}{
-			Menus: responses,
-			Total: total,
+			Menus:      responses,
+			NextCursor: nextCursor,
+			HasMore:    hasMore,
+			Total:      total,
 		}
 		if data, err := json.Marshal(cachedResult); err == nil {
 			database.RedisClient.Set(ctx, cacheKey, data, 5*time.Minute)
 		}
 	}
 
-	return responses, total, nil
+	return responses, nextCursor, hasMore, total, nil
 }
 
 // UpdateMenu updates an existing menu item

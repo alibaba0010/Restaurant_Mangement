@@ -274,7 +274,7 @@ func ListMenusHandler(writer http.ResponseWriter, request *http.Request) {
 		isAvailable = &b
 	}
 
-	menus, total, appErr := services.ListMenus(request.Context(), params.Page, params.PageSize, params.Query, restaurantID, minPrice, maxPrice, isAvailable, params.SortBy, params.Order)
+	menus, nextCursor, hasMore, total, appErr := services.ListMenus(request.Context(), params.Limit, params.Cursor, params.Query, restaurantID, minPrice, maxPrice, isAvailable, params.SortBy, params.Order)
 	if appErr != nil {
 		errors.ErrorResponse(writer, request, appErr)
 		return
@@ -282,11 +282,10 @@ func ListMenusHandler(writer http.ResponseWriter, request *http.Request) {
 
 	utils.WriteJSON(writer, http.StatusOK, dto.MenusListResponse{
 		Data: menus,
-		Meta: commondto.PaginationMeta{
-			Page:       params.Page,
-			PageSize:   params.PageSize,
+		Meta: commondto.CursorMeta{
+			NextCursor: nextCursor,
+			HasMore:    hasMore,
 			Total:      total,
-			TotalPages: utils.CalculateTotalPages(total, params.PageSize),
 		},
 	})
 }

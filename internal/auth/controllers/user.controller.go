@@ -79,7 +79,7 @@ func GetAllUsersHandler(writer http.ResponseWriter, request *http.Request) {
 	params := utils.ParseListParams(request)
 	role := request.URL.Query().Get("role")
 
-	users, total, appErr := services.GetAllUsers(request.Context(), params.Page, params.PageSize, params.Query, role, params.SortBy, params.Order)
+	users, nextCursor, hasMore, total, appErr := services.GetAllUsers(request.Context(), params.Limit, params.Cursor, params.Query, role, params.SortBy, params.Order)
 	if appErr != nil {
 		errors.ErrorResponse(writer, request, appErr)
 		return
@@ -88,11 +88,10 @@ func GetAllUsersHandler(writer http.ResponseWriter, request *http.Request) {
 	resp := dto.UsersListResponse{
 		Title: "Users retrieved successfully",
 		Data:  users,
-		Meta: commondto.PaginationMeta{
-			Page:       params.Page,
-			PageSize:   params.PageSize,
+		Meta: commondto.CursorMeta{
+			NextCursor: nextCursor,
+			HasMore:    hasMore,
 			Total:      total,
-			TotalPages: utils.CalculateTotalPages(total, params.PageSize),
 		},
 	}
 

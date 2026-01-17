@@ -113,17 +113,14 @@ func GetRestaurantByID(ctx context.Context, id string) (*dto.RestaurantResponse,
 }
 
 // GetAllRestaurants retrieves a paginated list of restaurants
-func GetAllRestaurants(ctx context.Context, page, pageSize int, qStr string, userID *string, status *string, sortBy, order string) ([]dto.RestaurantResponse, int64, *errors.AppError) {
-	if page <= 0 {
-		page = 1
-	}
-	if pageSize <= 0 || pageSize > 100 {
-		pageSize = 20
+func GetAllRestaurants(ctx context.Context, limit int, cursor string, qStr string, userID *string, status *string, sortBy, order string) ([]dto.RestaurantResponse, string, bool, int64, *errors.AppError) {
+	if limit <= 0 || limit > 100 {
+		limit = 20
 	}
 
-	restaurants, total, err := repositories.RestaurantRepo.FindAll(ctx, page, pageSize, qStr, userID, status, sortBy, order)
+	restaurants, nextCursor, hasMore, total, err := repositories.RestaurantRepo.FindAll(ctx, limit, cursor, qStr, userID, status, sortBy, order)
 	if err != nil {
-		return nil, 0, errors.InternalError(err)
+		return nil, "", false, 0, errors.InternalError(err)
 	}
 
 	// Map to DTO
@@ -132,7 +129,7 @@ func GetAllRestaurants(ctx context.Context, page, pageSize int, qStr string, use
 		responses[i] = *MapRestaurantToResponse(&r)
 	}
 
-	return responses, total, nil
+	return responses, nextCursor, hasMore, total, nil
 }
 
 // UpdateRestaurant updates an existing restaurant

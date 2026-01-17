@@ -6,6 +6,8 @@ import (
 	"github.com/alibaba0010/postgres-api/internal/common/guards"
 	"github.com/alibaba0010/postgres-api/internal/common/middlewares"
 	"github.com/alibaba0010/postgres-api/internal/restaurants/controllers"
+	"github.com/alibaba0010/postgres-api/internal/common/types"
+
 	"github.com/gorilla/mux"
 )
 
@@ -13,20 +15,21 @@ import (
 func MenuRoutes(route *mux.Router) {
 	// Menus endpoint
 	menus := route.PathPrefix("/menus").Subrouter()
+	managementRole := guards.RequireRole(types.RoleManagement.String())
 
 	// Multipart Upload Routes
 	multipart := menus.PathPrefix("/multipart").Subrouter()
-	multipart.Use(guards.AuthMiddleware, guards.RequireRole("management"))
+	multipart.Use(guards.AuthMiddleware, managementRole)
 	multipart.HandleFunc("/initiate", controllers.InitiateMultipartUploadHandler).Methods("POST")
 	multipart.HandleFunc("/part-url", controllers.GenerateMultipartPartURLHandler).Methods("GET")
 	multipart.HandleFunc("/complete", controllers.CompleteMultipartUploadHandler).Methods("POST")
 
 	// Protected Routes - Only Management can CREATE, UPDATE menus and UPLOAD media
 	// Get Upload URL (GET /menus/upload-url)
-	menus.Handle("/upload-url", guards.AuthMiddleware(guards.RequireRole("management")(http.HandlerFunc(controllers.GetMenuUploadURLHandler)))).Methods("GET")
+	menus.Handle("/upload-url", guards.AuthMiddleware(managementRole(http.HandlerFunc(controllers.GetMenuUploadURLHandler)))).Methods("GET")
 
 	// Direct Upload (POST /menus/upload)
-	menus.Handle("/upload", guards.AuthMiddleware(guards.RequireRole("management")(http.HandlerFunc(controllers.UploadMenuMediaHandler)))).Methods("POST")
+	menus.Handle("/upload", guards.AuthMiddleware(managementRole(http.HandlerFunc(controllers.UploadMenuMediaHandler)))).Methods("POST")
 
 	// Public Routes
 	// List Menus with filters - Public with strict rate limiting (5 req/sec, burst 10)
@@ -36,8 +39,8 @@ func MenuRoutes(route *mux.Router) {
 	menus.Handle("/{id}", http.HandlerFunc(controllers.GetMenuHandler)).Methods("GET")
 
 	// Create Menu (POST /menus)
-	menus.Handle("", guards.AuthMiddleware(guards.RequireRole("management")(http.HandlerFunc(controllers.CreateMenuHandler)))).Methods("POST")
+	menus.Handle("", guards.AuthMiddleware(managementRole(http.HandlerFunc(controllers.CreateMenuHandler)))).Methods("POST")
 
 	// Update Menu (PUT/PATCH /menus/{id})
-	menus.Handle("/{id}", guards.AuthMiddleware(guards.RequireRole("management")(http.HandlerFunc(controllers.UpdateMenuHandler)))).Methods("PUT", "PATCH")
+	menus.Handle("/{id}", guards.AuthMiddleware(managementRole(http.HandlerFunc(controllers.UpdateMenuHandler)))).Methods("PUT", "PATCH")
 }

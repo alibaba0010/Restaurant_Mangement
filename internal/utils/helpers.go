@@ -202,8 +202,10 @@ func SanitizeSort(sortBy, order string, allowedFields []string, defaultField str
 
 // ListParams holds common query parameters for listing endpoints
 type ListParams struct {
-	Page     int
-	PageSize int
+	Page     int    // DB Offset = (Page-1)*PageSize
+	PageSize int    // Legacy Limit
+	Cursor   string // Cursor for cursor-based pagination
+	Limit    int    // Limit for cursor-based pagination
 	Query    string
 	SortBy   string
 	Order    string
@@ -215,6 +217,8 @@ func ParseListParams(r *http.Request) ListParams {
 	return ListParams{
 		Page:     ParseInt(q.Get("page"), 1),
 		PageSize: ParseInt(q.Get("page_size"), 20),
+		Cursor:   q.Get("cursor"),
+		Limit:    ParseInt(q.Get("limit"), 20),
 		Query:    q.Get("q"),
 		SortBy:   q.Get("sort_by"),
 		Order:    q.Get("order"),

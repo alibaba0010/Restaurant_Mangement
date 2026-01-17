@@ -142,12 +142,9 @@ func UpdateUser(ctx context.Context, userID string, input dto.UpdateUserInput) (
 
 // GetAllUsers returns a paginated, filtered and sorted list of users.
 // Supports search by name/email (`q`), role filter, and sorting by allowed columns.
-func GetAllUsers(ctx context.Context, page, pageSize int, qStr, role, sortBy, order string) ([]dto.UserData, int64, *errors.AppError) {
-	if page <= 0 {
-		page = 1
-	}
-	if pageSize <= 0 || pageSize > 100 {
-		pageSize = 20
+func GetAllUsers(ctx context.Context, limit int, cursorStr, qStr, role, sortBy, order string) ([]dto.UserData, string, bool, int64, *errors.AppError) {
+	if limit <= 0 || limit > 100 {
+		limit = 20
 	}
 
 	// Sorting validation
@@ -161,10 +158,10 @@ func GetAllUsers(ctx context.Context, page, pageSize int, qStr, role, sortBy, or
 		order = "ASC"
 	}
 
-	users, total, err := repositories.UserRepo.FindAll(ctx, page, pageSize, qStr, role, sortBy, order)
+	users, nextCursor, hasMore, total, err := repositories.UserRepo.FindAll(ctx, limit, cursorStr, qStr, role, sortBy, order)
 	if err != nil {
 		logger.Log.Error("failed to fetch users", zap.Error(err))
-		return nil, 0, errors.NotFoundError("no users found")
+		return nil, "", false, 0, errors.NotFoundError("no users found")
 	}
 
 	// Map to DTO
@@ -173,7 +170,7 @@ func GetAllUsers(ctx context.Context, page, pageSize int, qStr, role, sortBy, or
 		result = append(result, mapToCurrentUserResponse(&u))
 	}
 
-	return result, total, nil
+	return result, nextCursor, hasMore, total, nil
 }
 
 // ValidateUserRole checks if a user role is valid

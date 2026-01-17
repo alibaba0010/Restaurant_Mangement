@@ -119,7 +119,7 @@ func ListRestaurantsHandler(writer http.ResponseWriter, request *http.Request) {
 		filterStatus = &activeStatus
 	}
 
-	data, total, err := services.GetAllRestaurants(request.Context(), params.Page, params.PageSize, params.Query, filterUserID, filterStatus, params.SortBy, params.Order)
+	data, nextCursor, hasMore, total, err := services.GetAllRestaurants(request.Context(), params.Limit, params.Cursor, params.Query, filterUserID, filterStatus, params.SortBy, params.Order)
 	if err != nil {
 		errors.ErrorResponse(writer, request, err)
 		return
@@ -128,11 +128,10 @@ func ListRestaurantsHandler(writer http.ResponseWriter, request *http.Request) {
 	utils.WriteJSON(writer, http.StatusOK, dto.RestaurantsListResponse{
 		Title: "Restaurants retrieved successfully",
 		Data:  data,
-		Meta: commondto.PaginationMeta{
-			Page:       params.Page,
-			PageSize:   params.PageSize,
+		Meta: commondto.CursorMeta{
+			NextCursor: nextCursor,
+			HasMore:    hasMore,
 			Total:      total,
-			TotalPages: utils.CalculateTotalPages(total, params.PageSize),
 		},
 	})
 }

@@ -21,9 +21,9 @@ type UserData struct {
 
 // UsersListResponse is the response for listing users
 type UsersListResponse struct {
-	Title string                   `json:"title"`
-	Data  []UserData               `json:"data"`
-	Meta  commondto.PaginationMeta `json:"meta"`
+	Title string               `json:"title"`
+	Data  []UserData           `json:"data"`
+	Meta  commondto.CursorMeta `json:"meta"`
 }
 
 // UpdateUserRoleInput is used for updating a user's role and status

@@ -14,3 +14,16 @@ type PaginatedResponse struct {
 	Data  interface{}    `json:"data"`
 	Meta  PaginationMeta `json:"meta"`
 }
+// CursorMeta provides cursor-based pagination details
+type CursorMeta struct {
+	NextCursor string `json:"next_cursor"`
+	HasMore    bool   `json:"has_more"`
+	Total      int64  `json:"total,omitempty"` // Optional: keeping track of total count can be expensive, but sometimes requested
+}
+
+// CursorPaginatedResponse is a generic wrapper for cursor paginated data
+type CursorPaginatedResponse struct {
+	Title string      `json:"title,omitempty"`
+	Data  interface{} `json:"data"`
+	Meta  CursorMeta  `json:"meta"`
+}

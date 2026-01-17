@@ -51,8 +51,8 @@ func (r *UserRepository) Update(ctx context.Context, user *models.User, columns 
 	return err
 }
 
-// FindAll retrieves users with pagination, filtering, and sorting
-func (r *UserRepository) FindAll(ctx context.Context, page, pageSize int, qStr, role, sortBy, order string) ([]models.User, int64, error) {
+// FindAll retrieves users with cursor-based pagination
+func (r *UserRepository) FindAll(ctx context.Context, limit int, cursorStr, qStr, role, sortBy, order string) ([]models.User, string, bool, int64, error) {
 	users := make([]models.User, 0)
 	sel := database.DB.NewSelect().Model(&users)
 
@@ -66,21 +66,68 @@ func (r *UserRepository) FindAll(ctx context.Context, page, pageSize int, qStr, 
 
 	total, err := sel.Count(ctx)
 	if err != nil {
-		return nil, 0, err
+		return nil, "", false, 0, err
 	}
 
-	// Sanitize and apply sorting to prevent SQL injection and ensure valid sort parameters
+	// Sanitize Sort
 	sortBy, order = utils.SanitizeSort(sortBy, order, []string{"created_at", "email", "name", "role"}, "created_at")
 
-	sel = sel.Order(fmt.Sprintf("%s %s", sortBy, order)).
-		Limit(pageSize).
-		Offset((page - 1) * pageSize)
+	// Apply Cursor Filter
+	if cursorStr != "" {
+		decoded, err := utils.DecodeCursor(cursorStr)
+		if err != nil {
+			return nil, "", false, 0, err
+		}
 
-	if err := sel.Scan(ctx); err != nil {
-		return nil, 0, err
+		op := ">"
+		if order == "DESC" {
+			op = "<"
+		}
+
+		var cursorVal interface{}
+		switch sortBy {
+		case "created_at":
+			cursorVal = utils.GetCursorValueAsTime(decoded.LastValue)
+		default:
+			cursorVal = utils.GetCursorValueAsString(decoded.LastValue)
+		}
+
+		sel = sel.Where(fmt.Sprintf("(%s, id) %s (?, ?)", sortBy, op), cursorVal, decoded.LastID)
 	}
 
-	return users, int64(total), nil
+	// Order by Sort Column + ID (tie breaker)
+	sel = sel.Order(fmt.Sprintf("%s %s", sortBy, order)).OrderExpr("id " + order)
+
+	// Limit
+	err = sel.Limit(limit + 1).Scan(ctx)
+	if err != nil {
+		return nil, "", false, 0, err
+	}
+
+	hasMore := false
+	nextCursor := ""
+	if len(users) > limit {
+		hasMore = true
+		users = users[:limit]
+		lastItem := users[limit-1]
+
+		var lastVal interface{}
+		switch sortBy {
+		case "created_at":
+			lastVal = lastItem.CreatedAt
+		case "email":
+			lastVal = lastItem.Email
+		case "name":
+			lastVal = lastItem.Name
+		case "role":
+			lastVal = lastItem.Role
+		default:
+			lastVal = lastItem.CreatedAt
+		}
+		nextCursor = utils.EncodeCursor(lastVal, lastItem.ID)
+	}
+
+	return users, nextCursor, hasMore, int64(total), nil
 }
 
 // UpdateInTx updates a user within an existing transaction
