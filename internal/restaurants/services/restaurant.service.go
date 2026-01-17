@@ -12,6 +12,30 @@ import (
 	"github.com/alibaba0010/postgres-api/internal/utils"
 	"go.uber.org/zap"
 )
+// MapRestaurantToResponse maps Restaurant model to RestaurantResponse DTO
+func MapRestaurantToResponse(r *models.Restaurant) *dto.RestaurantResponse {
+	var userIDStr *string
+	if r.UserID != nil {
+		idStr := r.UserID.String()
+		userIDStr = &idStr
+	}
+
+	return &dto.RestaurantResponse{
+		ID:                r.ID.String(),
+		Name:              r.Name,
+		Description:       r.Description,
+		Address:           r.Address,
+		AvatarURL:         r.AvatarURL,
+		Status:            string(r.Status),
+		UserID:            userIDStr,
+		Capacity:          r.Capacity,
+		DeliveryAvailable: r.DeliveryAvailable,
+		TakeawayAvailable: r.TakeawayAvailable,
+		Rating:            r.Rating,
+		CreatedAt:         r.CreatedAt.Format(time.RFC3339),
+		UpdatedAt:         r.UpdatedAt.Format(time.RFC3339),
+	}
+}
 
 // CreateRestaurant creates a new restaurant
 func CreateRestaurant(ctx context.Context, input dto.CreateRestaurantInput) (*dto.RestaurantResponse, *errors.AppError) {
@@ -142,26 +166,3 @@ func UpdateRestaurant(ctx context.Context, id string, input dto.UpdateRestaurant
 	return MapRestaurantToResponse(restaurant), nil
 }
 
-func MapRestaurantToResponse(r *models.Restaurant) *dto.RestaurantResponse {
-	var userIDStr *string
-	if r.UserID != nil {
-		idStr := r.UserID.String()
-		userIDStr = &idStr
-	}
-
-	return &dto.RestaurantResponse{
-		ID:                r.ID.String(),
-		Name:              r.Name,
-		Description:       r.Description,
-		Address:           r.Address,
-		AvatarURL:         r.AvatarURL,
-		Status:            string(r.Status),
-		UserID:            userIDStr,
-		Capacity:          r.Capacity,
-		DeliveryAvailable: r.DeliveryAvailable,
-		TakeawayAvailable: r.TakeawayAvailable,
-		Rating:            r.Rating,
-		CreatedAt:         r.CreatedAt.Format(time.RFC3339),
-		UpdatedAt:         r.UpdatedAt.Format(time.RFC3339),
-	}
-}

@@ -23,7 +23,7 @@ func GenerateUUIDv7() (uuid.UUID, error) {
 	// We'll use time.Now() and the default crypto/rand source.
 	return uuid.NewV7()
 }
-
+// ParseUUID parses a string to uuid.UUID type.
 func ParseUUID(s string) (uuid.UUID, error) {
 	return uuid.Parse(s)
 }
@@ -166,6 +166,7 @@ func ParseFloat(value string, defaultValue float64) float64 {
 	return parsed
 }
 
+// ParseInt parses a string to an integer with a default fallback.
 func ParseInt(value string, defaultValue int) int {
 	parsed, err := strconv.Atoi(value)
 	if err != nil {

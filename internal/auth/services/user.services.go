@@ -55,14 +55,6 @@ func GetUserByID(ctx context.Context, userID string) (*dto.UserData, *errors.App
 }
 
 // UpdateUser updates a user's address or phone number
-// TRANSACTION ANALYSIS: Transaction IS necessary here because:
-// 1. We're performing a single atomic operation (update single row)
-// 2. Concurrent updates could cause race conditions
-// 3. The transaction ensures consistency between the fetch and update operations
-// 4. It provides isolation level protection against dirty reads
-// However, for simple single-row updates, connection pooling alone might suffice
-// if the operation is purely an UPDATE statement without multiple queries.
-// Keeping the transaction for safety and consistency.
 func UpdateUser(ctx context.Context, userID string, input dto.UpdateUserInput) (*dto.UpdateUserResponse, *errors.AppError) {
 	// Validate input using the validator
 	validate := validator.New()
@@ -206,8 +198,6 @@ func GetUserByEmail(ctx context.Context, email string) (*models.User, *errors.Ap
 }
 
 // UpdateUserRoleStatus updates a user's role and/or status (admin or management)
-// Transaction is necessary here to prevent race conditions between reading the user
-// and updating multiple fields atomically, ensuring consistency.
 func UpdateUserRoleStatus(ctx context.Context, userID string, input dto.UpdateUserRoleInput) (*dto.UpdateUserResponse, *errors.AppError) {
 	// Validate input
 	validate := validator.New()

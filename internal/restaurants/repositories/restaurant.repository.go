@@ -13,12 +13,12 @@ import (
 type RestaurantRepository struct{}
 
 var RestaurantRepo = &RestaurantRepository{}
-
+// Create inserts a new restaurant into the database
 func (r *RestaurantRepository) Create(ctx context.Context, restaurant *models.Restaurant) error {
 	_, err := database.DB.NewInsert().Model(restaurant).Exec(ctx)
 	return err
 }
-
+// FindByID retrieves a restaurant by its ID from the database
 func (r *RestaurantRepository) FindByID(ctx context.Context, id string) (*models.Restaurant, error) {
 	restaurant := new(models.Restaurant)
 	err := database.DB.NewSelect().Model(restaurant).Where("id = ?", id).Scan(ctx)
@@ -27,7 +27,7 @@ func (r *RestaurantRepository) FindByID(ctx context.Context, id string) (*models
 	}
 	return restaurant, nil
 }
-
+// FindAll retrieves restaurants with pagination, filtering, and sorting
 func (r *RestaurantRepository) FindAll(ctx context.Context, page, pageSize int, qStr string, userID *string, sortBy, order string) ([]models.Restaurant, int64, error) {
 	restaurants := make([]models.Restaurant, 0)
 	sel := database.DB.NewSelect().Model(&restaurants)
@@ -60,7 +60,7 @@ func (r *RestaurantRepository) FindAll(ctx context.Context, page, pageSize int, 
 
 	return restaurants, int64(total), nil
 }
-
+// Update updates an existing restaurant in the database
 func (r *RestaurantRepository) Update(ctx context.Context, restaurant *models.Restaurant) error {
 	restaurant.UpdatedAt = time.Now()
 	_, err := database.DB.NewUpdate().Model(restaurant).WherePK().Exec(ctx)
