@@ -2,14 +2,17 @@ package services
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/alibaba0010/postgres-api/internal/common/errors"
+	"github.com/alibaba0010/postgres-api/internal/common/guards"
 	"github.com/alibaba0010/postgres-api/internal/common/logger"
 	"github.com/alibaba0010/postgres-api/internal/restaurants/dto"
 	"github.com/alibaba0010/postgres-api/internal/restaurants/models"
 	"github.com/alibaba0010/postgres-api/internal/restaurants/repositories"
 	"github.com/alibaba0010/postgres-api/internal/utils"
+	"github.com/google/uuid"
 	"go.uber.org/zap"
 )
 // MapRestaurantToResponse maps Restaurant model to RestaurantResponse DTO
@@ -38,7 +41,19 @@ func MapRestaurantToResponse(r *models.Restaurant) *dto.RestaurantResponse {
 }
 
 // CreateRestaurant creates a new restaurant
-func CreateRestaurant(ctx context.Context, input dto.CreateRestaurantInput) (*dto.RestaurantResponse, *errors.AppError) {
+// user parameter is required and should be passed from the authentication middleware
+func CreateRestaurant(ctx context.Context, input dto.CreateRestaurantInput, user *guards.AuthenticatedUser) (*dto.RestaurantResponse, *errors.AppError) {
+	// Validate input
+	if validationErrors := utils.ValidateStruct(input); len(validationErrors) > 0 {
+		return nil, errors.ValidationErrors(validationErrors)
+	}
+
+	// Sanitize string inputs to prevent injection attacks
+	input.Name = strings.TrimSpace(input.Name)
+	input.Description = strings.TrimSpace(input.Description)
+	input.Address = strings.TrimSpace(input.Address)
+	input.AvatarURL = strings.TrimSpace(input.AvatarURL)
+
 	id, err := utils.GenerateUUIDv7()
 	if err != nil {
 		return nil, errors.InternalError(err)
@@ -55,17 +70,19 @@ func CreateRestaurant(ctx context.Context, input dto.CreateRestaurantInput) (*dt
 		UpdatedAt:   time.Now(),
 	}
 
-	// Set optional fields
+	// Set the user as the owner (from authenticated user)
+	userID, err := uuid.Parse(user.UserID)
+	if err != nil {
+		logger.Log.Error("failed to parse user ID", zap.Error(err))
+		return nil, errors.InternalError(err)
+	}
+	restaurant.UserID = &userID
+
+	// Set optional fields - but ignore any UserID from input (use authenticated user only)
 	if input.Status != "" {
 		restaurant.Status = models.RestaurantStatus(input.Status)
 	}
-	if input.UserID != nil {
-		uuid, err := utils.ParseUUID(*input.UserID)
-		if err == nil {
-			restaurant.UserID = &uuid
-		}
-	}
-	if input.Capacity != nil {
+	if input.Capacity != nil && *input.Capacity >= 0 {
 		restaurant.Capacity = *input.Capacity
 	}
 	if input.DeliveryAvailable != nil {

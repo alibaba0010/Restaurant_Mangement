@@ -6,7 +6,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-playground/validator/v10"
 	"github.com/gorilla/mux"
 
 	"github.com/alibaba0010/postgres-api/internal/auth/dto"
@@ -107,9 +106,8 @@ func SigninHandler(writer http.ResponseWriter, request *http.Request) {
 	input.Password = strings.TrimSpace(input.Password)
 
 	// Validate input
-	validate := validator.New()
-	if err := validate.Struct(input); err != nil {
-		errors.ErrorResponse(writer, request, errors.ValidationError("email and password are required"))
+	if err := utils.ValidateAndError(input); err != nil {
+		errors.ErrorResponse(writer, request, err)
 		return
 	}
 
@@ -308,9 +306,8 @@ func ForgotPasswordHandler(writer http.ResponseWriter, request *http.Request) {
 
 	// Trim and validate email
 	input.Email = strings.TrimSpace(input.Email)
-	validate := validator.New()
-	if err := validate.Struct(input); err != nil {
-		errors.ErrorResponse(writer, request, errors.ValidationError("valid email is required"))
+	if err := utils.ValidateAndError(input); err != nil {
+		errors.ErrorResponse(writer, request, err)
 		return
 	}
 
@@ -342,10 +339,8 @@ func ResetPasswordHandler(writer http.ResponseWriter, request *http.Request) {
 	input.ConfirmPassword = strings.TrimSpace(input.ConfirmPassword)
 
 	// Validate input
-	validate := validator.New()
-	dto.RegisterValidators(validate)
-	if err := validate.Struct(input); err != nil {
-		errors.ErrorResponse(writer, request, errors.ValidationError("invalid input"))
+	if err := utils.ValidateAndError(input); err != nil {
+		errors.ErrorResponse(writer, request, err)
 		return
 	}
 

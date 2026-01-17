@@ -21,13 +21,22 @@ func CreateRestaurantHandler(writer http.ResponseWriter, request *http.Request) 
 		errors.ErrorResponse(writer, request, errors.ValidationError("Invalid request body"))
 		return
 	}
-
-	// Set the current user as the owner
-	if user := guards.ExtractAuthenticatedUser(request); user != nil {
-		input.UserID = &user.UserID
+	
+	// Validate input
+	if validationErrors := utils.ValidateStruct(input); validationErrors != nil {
+		errors.ErrorResponse(writer, request, errors.ValidationError(validationErrors[0]))
+		return
 	}
 
-	resp, err := services.CreateRestaurant(request.Context(), input)
+	// Extract authenticated user from context (set by AuthMiddleware)
+	user := guards.ExtractAuthenticatedUser(request)
+	if user == nil {
+		errors.ErrorResponse(writer, request, errors.UnauthorizedError("User not authenticated"))
+		return
+	}
+
+	// Pass user info directly to service
+	resp, err := services.CreateRestaurant(request.Context(), input, user)
 	if err != nil {
 		errors.ErrorResponse(writer, request, err)
 		return
@@ -77,14 +86,26 @@ func ListRestaurantsHandler(writer http.ResponseWriter, request *http.Request) {
 
 	// Filter logic based on user role
 	var filterUserID *string
-	if user := guards.ExtractAuthenticatedUser(request); user != nil {
+	user := guards.ExtractAuthenticatedUser(request)
+
+	if user != nil {
 		switch user.Role {
 		case types.RoleManagement:
 			// Management -> Only own restaurants
 			filterUserID = &user.UserID
 		case types.RoleAdmin:
-			// Admin -> All restaurants (no userID filter)
+			// Admin -> All restaurants (Admin View)
+			filterUserID = nil
+		case types.RoleUser:
+			// User -> All restaurants (Customer View)
+			filterUserID = nil
+		default:
+			// Unknown role -> All restaurants (Public View fallback)
+			filterUserID = nil
 		}
+	} else {
+		// Unauthenticated -> All restaurants (Public View)
+		filterUserID = nil
 	}
 
 	data, total, err := services.GetAllRestaurants(request.Context(), params.Page, params.PageSize, params.Query, filterUserID, params.SortBy, params.Order)

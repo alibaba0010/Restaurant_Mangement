@@ -6,6 +6,7 @@ import (
 
 	"github.com/alibaba0010/postgres-api/internal/auth/models"
 	"github.com/alibaba0010/postgres-api/internal/database"
+	"github.com/alibaba0010/postgres-api/internal/utils"
 	"github.com/uptrace/bun"
 )
 
@@ -67,6 +68,9 @@ func (r *UserRepository) FindAll(ctx context.Context, page, pageSize int, qStr, 
 	if err != nil {
 		return nil, 0, err
 	}
+
+	// Sanitize and apply sorting to prevent SQL injection and ensure valid sort parameters
+	sortBy, order = utils.SanitizeSort(sortBy, order, []string{"created_at", "email", "name", "role"}, "created_at")
 
 	sel = sel.Order(fmt.Sprintf("%s %s", sortBy, order)).
 		Limit(pageSize).

@@ -10,7 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-playground/validator/v10"
 	redisPkg "github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 	"golang.org/x/crypto/argon2"
@@ -35,45 +34,13 @@ const (
 	argonSaltLen   uint32 = 16
 )
 
-// mapValidatorErrors converts go-playground/validator errors into AppError
-func mapValidatorErrors(err error) *errors.AppError {
-	if ves, ok := err.(validator.ValidationErrors); ok {
-		var messages []string
-		for _, fe := range ves {
-			field := fe.Field()
-			var msg string
-			switch fe.Tag() {
-			case "required":
-				msg = fmt.Sprintf("%s is required", field)
-			case "min":
-				msg = fmt.Sprintf("%s must be at least %s characters", field, fe.Param())
-			case "max":
-				msg = fmt.Sprintf("%s must be at most %s characters", field, fe.Param())
-			case "email":
-				msg = fmt.Sprintf("%s must be a valid email address", field)
-			case "password_special":
-				msg = "password must contain at least one uppercase letter, one lowercase letter, one digit, and one special character"
-			case "eqfield":
-				msg = fmt.Sprintf("%s must match %s", field, fe.Param())
-			default:
-				msg = fmt.Sprintf("%s is invalid", field)
-			}
-			messages = append(messages, msg)
-		}
-		return errors.ValidationErrors(messages)
-	}
-	return errors.ValidationError(err.Error())
-}
+
 
 // Register User Functionality
 func RegisterUser(ctx context.Context, input dto.SignupInput) (*models.User, *errors.AppError) {
-	// Validate input using same validation rules as controllers previously used
-	validate := validator.New()
-	dto.RegisterValidators(validate)
-
-	// Run validation and convert errors to friendly messages
-	if err := validate.Struct(input); err != nil {
-		return nil, mapValidatorErrors(err)
+	// Validate input
+	if err := utils.ValidateAndError(input); err != nil {
+		return nil, err
 	}
 
 	// Set default role
@@ -181,13 +148,9 @@ func ActivateUser(ctx context.Context, token string) (*models.User, *errors.AppE
 }
 
 func LoginUser(ctx context.Context, email, password string) (*models.User, *TokenPair, *errors.AppError) {
-	// Validate input using dto validators for consistency
-	validate := validator.New()
-	dto.RegisterValidators(validate)
-
 	in := dto.SigninInput{Email: email, Password: password}
-	if err := validate.Struct(in); err != nil {
-		return nil, nil, mapValidatorErrors(err)
+	if err := utils.ValidateAndError(in); err != nil {
+		return nil, nil, err
 	}
 
 	// Fetch user by email
