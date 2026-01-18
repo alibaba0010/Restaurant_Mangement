@@ -17,10 +17,116 @@ import (
 	"github.com/gorilla/mux"
 )
 
+// isValidMediaType checks if the file extension is allowed
+func isValidMediaType(filename string) bool {
+	ext := strings.ToLower(filepath.Ext(filename))
+	validExts := map[string]bool{
+		".jpg": true, ".jpeg": true, ".png": true, ".webp": true, ".gif": true, ".avif": true, ".heic": true,
+		".mp4": true, ".mov": true, ".avi": true, ".webm": true, ".m4v": true, ".mkv": true,
+		// ".jpg": true, ".jpeg": true, ".png": true, ".webp": true,
+		// ".mp4": true, ".mov": true, ".avi": true,
+	}
+	return validExts[ext]
+}
+
+// verifyRestaurantOwnership checks if the user owns the restaurant
+func verifyRestaurantOwnership(ctx context.Context, restaurantID string, userID string) *errors.AppError {
+	restaurant, err := services.GetRestaurantByID(ctx, restaurantID)
+	if err != nil {
+		return err
+	}
+	if restaurant.UserID == nil || *restaurant.UserID != userID {
+		return errors.ForbiddenError("You do not have permission to manage this restaurant's resources")
+	}
+	return nil
+}
+
+// InitiateMultipartUploadHandler handles the initiation of a multipart upload
+func InitiateMultipartUploadHandler(writer http.ResponseWriter, request *http.Request) {
+	var input dto.InitiateMultipartUploadInput
+
+	if err := json.NewDecoder(request.Body).Decode(&input); err != nil {
+		errors.ErrorResponse(writer, request, errors.ValidationError("Invalid request body"))
+		return
+	}
+
+	user := guards.ExtractAuthenticatedUser(request)
+	if user == nil {
+		errors.ErrorResponse(writer, request, errors.UnauthorizedError("Authentication required"))
+		return
+	}
+
+	resp, err := services.InitiateMultipartUpload(request.Context(), user.UserID, input.Filename, input.ContentType)
+	if err != nil {
+		errors.ErrorResponse(writer, request, errors.InternalError(err))
+		return
+	}
+
+	utils.WriteJSON(writer, http.StatusCreated, dto.InitiateMultipartUploadResponseHandler{
+		Title:    "Multipart upload initiated",
+		Response: *resp,
+	})
+}
+
+// GenerateMultipartPartURLHandler handles generating a presigned URL for a part
+func GenerateMultipartPartURLHandler(writer http.ResponseWriter, request *http.Request) {
+	query := request.URL.Query()
+	key := query.Get("key")
+	uploadID := query.Get("upload_id")
+	partNumberStr := query.Get("part_number")
+
+	if key == "" || uploadID == "" || partNumberStr == "" {
+		errors.ErrorResponse(writer, request, errors.ValidationError("key, upload_id, and part_number are required"))
+		return
+	}
+
+	partNumber := utils.ParseInt(partNumberStr, 0)
+	if partNumber <= 0 {
+		errors.ErrorResponse(writer, request, errors.ValidationError("part_number must be a positive integer"))
+		return
+	}
+
+	url, err := services.GeneratePartPresignedURL(request.Context(), key, uploadID, int32(partNumber))
+	if err != nil {
+		errors.ErrorResponse(writer, request, errors.InternalError(err))
+		return
+	}
+
+	utils.WriteJSON(writer, http.StatusOK, dto.GenerateMultipartPartURLResponse{
+		Title: "Presigned part URL generated",
+		Response: url,
+	})
+}
+
+// CompleteMultipartUploadHandler handles the completion of a multipart upload
+func CompleteMultipartUploadHandler(writer http.ResponseWriter, request *http.Request) {
+	var input dto.CompleteMultipartUploadInput
+	if err := json.NewDecoder(request.Body).Decode(&input); err != nil {
+		errors.ErrorResponse(writer, request, errors.ValidationError("Invalid request body"))
+		return
+	}
+
+	publicURL, err := services.CompleteMultipartUpload(request.Context(), input.Key, input.UploadID, input.Parts)
+	if err != nil {
+		errors.ErrorResponse(writer, request, errors.InternalError(err))
+		return
+	}
+
+	utils.WriteJSON(writer, http.StatusOK, dto.CompleteMultipartUploadResponse{
+		Title: "Multipart upload completed",
+		Response: publicURL,
+	})
+}
+
 // GetMenuUploadURLHandler handles the request for a presigned URL for menu media uploads
 func GetMenuUploadURLHandler(writer http.ResponseWriter, request *http.Request) {
-	filename := request.URL.Query().Get("filename")
-	contentType := request.URL.Query().Get("content_type")
+	var input dto.GetMenuUploadURLInput
+	if err := json.NewDecoder(request.Body).Decode(&input); err != nil {
+		errors.ErrorResponse(writer, request, errors.ValidationError("Invalid request body"))
+		return
+	}
+	filename := input.Filename
+	contentType := input.ContentType
 
 	if filename == "" || contentType == "" {
 		errors.ErrorResponse(writer, request, errors.ValidationError("filename and content_type are required"))
@@ -45,26 +151,15 @@ func GetMenuUploadURLHandler(writer http.ResponseWriter, request *http.Request) 
 		return
 	}
 
-	utils.WriteJSON(writer, http.StatusOK, map[string]interface{}{
-		"title": "Presigned URL generated successfully",
-		"data": map[string]string{
-			"upload_url": uploadURL,
-			"public_url": publicURL,
+	utils.WriteJSON(writer, http.StatusOK, dto.GetMenuUploadURLResponse{
+		Title: "Presigned URL generated successfully",
+		Response: dto.URLResponse{
+			UploadURL: uploadURL,
+			PublicURL: publicURL,
 		},
 	})
 }
 
-// isValidMediaType checks if the file extension is allowed
-func isValidMediaType(filename string) bool {
-	ext := strings.ToLower(filepath.Ext(filename))
-	validExts := map[string]bool{
-		".jpg": true, ".jpeg": true, ".png": true, ".webp": true, ".gif": true, ".avif": true, ".heic": true,
-		".mp4": true, ".mov": true, ".avi": true, ".webm": true, ".m4v": true, ".mkv": true,
-		// ".jpg": true, ".jpeg": true, ".png": true, ".webp": true,
-		// ".mp4": true, ".mov": true, ".avi": true,
-	}
-	return validExts[ext]
-}
 
 // UploadMenuMediaHandler handles direct media upload (Multipart Form)
 func UploadMenuMediaHandler(writer http.ResponseWriter, request *http.Request) {
@@ -102,98 +197,10 @@ func UploadMenuMediaHandler(writer http.ResponseWriter, request *http.Request) {
 		return
 	}
 
-	utils.WriteJSON(writer, http.StatusOK, map[string]string{
-		"title": "Upload successful",
-		"data":  publicURL,
+	utils.WriteJSON(writer, http.StatusOK, dto.UploadMenuMediaResponse{
+		Title: "Upload successful",
+		Response: publicURL,
 	})
-}
-
-// InitiateMultipartUploadHandler handles the initiation of a multipart upload
-func InitiateMultipartUploadHandler(writer http.ResponseWriter, request *http.Request) {
-	var input dto.InitiateMultipartUploadInput
-	if err := json.NewDecoder(request.Body).Decode(&input); err != nil {
-		errors.ErrorResponse(writer, request, errors.ValidationError("Invalid request body"))
-		return
-	}
-
-	user := guards.ExtractAuthenticatedUser(request)
-	if user == nil {
-		errors.ErrorResponse(writer, request, errors.UnauthorizedError("Authentication required"))
-		return
-	}
-
-	resp, err := services.InitiateMultipartUpload(request.Context(), user.UserID, input.Filename, input.ContentType)
-	if err != nil {
-		errors.ErrorResponse(writer, request, errors.InternalError(err))
-		return
-	}
-
-	utils.WriteJSON(writer, http.StatusCreated, map[string]interface{}{
-		"title": "Multipart upload initiated",
-		"data":  resp,
-	})
-}
-
-// GenerateMultipartPartURLHandler handles generating a presigned URL for a part
-func GenerateMultipartPartURLHandler(writer http.ResponseWriter, request *http.Request) {
-	query := request.URL.Query()
-	key := query.Get("key")
-	uploadID := query.Get("upload_id")
-	partNumberStr := query.Get("part_number")
-
-	if key == "" || uploadID == "" || partNumberStr == "" {
-		errors.ErrorResponse(writer, request, errors.ValidationError("key, upload_id, and part_number are required"))
-		return
-	}
-
-	partNumber := utils.ParseInt(partNumberStr, 0)
-	if partNumber <= 0 {
-		errors.ErrorResponse(writer, request, errors.ValidationError("part_number must be a positive integer"))
-		return
-	}
-
-	url, err := services.GeneratePartPresignedURL(request.Context(), key, uploadID, int32(partNumber))
-	if err != nil {
-		errors.ErrorResponse(writer, request, errors.InternalError(err))
-		return
-	}
-
-	utils.WriteJSON(writer, http.StatusOK, map[string]interface{}{
-		"title": "Presigned part URL generated",
-		"data":  url,
-	})
-}
-
-// CompleteMultipartUploadHandler handles the completion of a multipart upload
-func CompleteMultipartUploadHandler(writer http.ResponseWriter, request *http.Request) {
-	var input dto.CompleteMultipartUploadInput
-	if err := json.NewDecoder(request.Body).Decode(&input); err != nil {
-		errors.ErrorResponse(writer, request, errors.ValidationError("Invalid request body"))
-		return
-	}
-
-	publicURL, err := services.CompleteMultipartUpload(request.Context(), input.Key, input.UploadID, input.Parts)
-	if err != nil {
-		errors.ErrorResponse(writer, request, errors.InternalError(err))
-		return
-	}
-
-	utils.WriteJSON(writer, http.StatusOK, map[string]interface{}{
-		"title": "Multipart upload completed",
-		"data":  map[string]string{"url": publicURL},
-	})
-}
-
-// verifyRestaurantOwnership checks if the user owns the restaurant
-func verifyRestaurantOwnership(ctx context.Context, restaurantID string, userID string) *errors.AppError {
-	restaurant, err := services.GetRestaurantByID(ctx, restaurantID)
-	if err != nil {
-		return err
-	}
-	if restaurant.UserID == nil || *restaurant.UserID != userID {
-		return errors.ForbiddenError("You do not have permission to manage this restaurant's resources")
-	}
-	return nil
 }
 
 // CreateMenuHandler handles the creation of a menu item
@@ -247,8 +254,9 @@ func GetMenuHandler(writer http.ResponseWriter, request *http.Request) {
 		return
 	}
 
-	utils.WriteJSON(writer, http.StatusOK, map[string]any{
-		"data": services.MapMenuToResponse(menu),
+	utils.WriteJSON(writer, http.StatusOK, dto.GetMenuByIDResponse{
+		Title:    "Menu details",
+		Response: *services.MapMenuToResponse(menu),
 	})
 }
 

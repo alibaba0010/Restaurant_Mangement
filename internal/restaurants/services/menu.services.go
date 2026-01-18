@@ -35,9 +35,75 @@ func generateKey(s3Service *s3.S3Service, userID, filename, contentType string) 
 	return s3Service.GetMenuImageKey(userID, filename)
 }
 
+// MapMenuToResponse maps a Menu model to MenuResponse DTO
+func MapMenuToResponse(m *models.Menu) *dto.MenuResponse {
+	return &dto.MenuResponse{
+		ID:              m.ID.String(),
+		Name:            m.Name,
+		Description:     m.Description,
+		Price:           m.Price,
+		ImageURLs:       m.ImageURLs,
+		VideoURL:        m.VideoURL,
+		RestaurantID:    m.RestaurantID.String(),
+		IsAvailable:     m.IsAvailable,
+		PrepTimeMinutes: m.PrepTimeMinutes,
+		Calories:        m.Calories,
+		CreatedAt:       m.CreatedAt.Format(time.RFC3339),
+		UpdatedAt:       m.UpdatedAt.Format(time.RFC3339),
+	}
+}
+
+// InitiateMultipartUpload starts a multipart upload and returns details
+func InitiateMultipartUpload(ctx context.Context, userID, filename, contentType string) (*dto.InitiateMultipartUploadResponse, error) {
+	s3Service, err := s3.NewS3Service(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	key := generateKey(s3Service, userID, filename, contentType)
+
+	uploadID, err := s3Service.InitiateMultipartUpload(ctx, key, contentType)
+	if err != nil {
+		return nil, err
+	}
+
+	return &dto.InitiateMultipartUploadResponse{
+		UploadID: uploadID,
+		Key:      key,
+	}, nil
+}
+
+// GeneratePartPresignedURL generates a presigned URL for a specific part
+func GeneratePartPresignedURL(ctx context.Context, key, uploadID string, partNumber int32) (string, error) {
+	s3Service, err := s3.NewS3Service(ctx)
+	if err != nil {
+		return "", err
+	}
+
+	return s3Service.GeneratePresignPartURL(ctx, key, uploadID, partNumber)
+}
+
+// CompleteMultipartUpload completes the multipart upload
+func CompleteMultipartUpload(ctx context.Context, key, uploadID string, parts []dto.CompletedPart) (string, error) {
+	s3Service, err := s3.NewS3Service(ctx)
+	if err != nil {
+		return "", err
+	}
+
+	// Convert DTO parts to S3 types
+	s3Parts := make([]types.CompletedPart, len(parts))
+	for i, p := range parts {
+		s3Parts[i] = types.CompletedPart{
+			PartNumber: aws.Int32(p.PartNumber),
+			ETag:       aws.String(p.ETag),
+		}
+	}
+
+	return s3Service.CompleteMultipartUpload(ctx, key, uploadID, s3Parts)
+}
 // GetMenuUploadURL generates a presigned URL for menu media uploads
 func GetMenuUploadURL(ctx context.Context, userID string, filename string, contentType string) (string, string, error) {
-	s3Service, err := s3.NewS3Service()
+	s3Service, err := s3.NewS3Service(ctx)
 	if err != nil {
 		return "", "", err
 	}
@@ -57,7 +123,7 @@ func GetMenuUploadURL(ctx context.Context, userID string, filename string, conte
 
 // UploadMenuMedia handles direct media upload to S3
 func UploadMenuMedia(ctx context.Context, userID string, filename string, contentType string, body io.Reader) (string, error) {
-	s3Service, err := s3.NewS3Service()
+	s3Service, err := s3.NewS3Service(ctx)
 	if err != nil {
 		return "", err
 	}
@@ -233,69 +299,5 @@ func UpdateMenu(ctx context.Context, id string, input dto.UpdateMenuInput) (*dto
 	return MapMenuToResponse(menu), nil
 }
 
-// MapMenuToResponse maps a Menu model to MenuResponse DTO
-func MapMenuToResponse(m *models.Menu) *dto.MenuResponse {
-	return &dto.MenuResponse{
-		ID:              m.ID.String(),
-		Name:            m.Name,
-		Description:     m.Description,
-		Price:           m.Price,
-		ImageURLs:       m.ImageURLs,
-		VideoURL:        m.VideoURL,
-		RestaurantID:    m.RestaurantID.String(),
-		IsAvailable:     m.IsAvailable,
-		PrepTimeMinutes: m.PrepTimeMinutes,
-		Calories:        m.Calories,
-		CreatedAt:       m.CreatedAt.Format(time.RFC3339),
-		UpdatedAt:       m.UpdatedAt.Format(time.RFC3339),
-	}
-}
 
-// InitiateMultipartUpload starts a multipart upload and returns details
-func InitiateMultipartUpload(ctx context.Context, userID, filename, contentType string) (*dto.InitiateMultipartUploadResponse, error) {
-	s3Service, err := s3.NewS3Service()
-	if err != nil {
-		return nil, err
-	}
 
-	key := generateKey(s3Service, userID, filename, contentType)
-
-	uploadID, err := s3Service.InitiateMultipartUpload(ctx, key, contentType)
-	if err != nil {
-		return nil, err
-	}
-
-	return &dto.InitiateMultipartUploadResponse{
-		UploadID: uploadID,
-		Key:      key,
-	}, nil
-}
-
-// GeneratePartPresignedURL generates a presigned URL for a specific part
-func GeneratePartPresignedURL(ctx context.Context, key, uploadID string, partNumber int32) (string, error) {
-	s3Service, err := s3.NewS3Service()
-	if err != nil {
-		return "", err
-	}
-
-	return s3Service.GeneratePresignPartURL(ctx, key, uploadID, partNumber)
-}
-
-// CompleteMultipartUpload completes the multipart upload
-func CompleteMultipartUpload(ctx context.Context, key, uploadID string, parts []dto.CompletedPart) (string, error) {
-	s3Service, err := s3.NewS3Service()
-	if err != nil {
-		return "", err
-	}
-
-	// Convert DTO parts to S3 types
-	s3Parts := make([]types.CompletedPart, len(parts))
-	for i, p := range parts {
-		s3Parts[i] = types.CompletedPart{
-			PartNumber: aws.Int32(p.PartNumber),
-			ETag:       aws.String(p.ETag),
-		}
-	}
-
-	return s3Service.CompleteMultipartUpload(ctx, key, uploadID, s3Parts)
-}

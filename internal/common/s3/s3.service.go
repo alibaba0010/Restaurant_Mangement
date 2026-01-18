@@ -20,11 +20,12 @@ type S3Service struct {
 	bucket   string
 }
 
-func NewS3Service() (*S3Service, error) {
+// NewS3Service creates a new S3 service instance.
+func NewS3Service(ctx context.Context) (*S3Service, error) {
 	appCfg := envConfig.LoadConfig()
 
 	// Load AWS config with static credentials
-	cfg, err := config.LoadDefaultConfig(context.TODO(),
+	cfg, err := config.LoadDefaultConfig(ctx,
 		config.WithRegion(appCfg.AWS_REGION),
 		config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(
 			appCfg.AWS_ACCESS_KEY_ID,
@@ -64,22 +65,25 @@ func (s *S3Service) GenerateUploadURL(ctx context.Context, key, contentType stri
 
 	return req.URL, nil
 }
+// GetMenuImageKey generates the S3 key for a menu image according to the recommended structure:
+// menus/images/menu/{userId}/avatar.webp (or other extensions)
+func (s *S3Service) GetMenuImageKey(userId string, filename string) string {
+	return fmt.Sprintf("menus/images/menu/%s/%s", userId, filename)
+}
 
-// DirectUpload uploads a file directly from an io.Reader to S3.
-// Useful for smaller files or when client-side direct upload is not preferred.
-func (s *S3Service) DirectUpload(ctx context.Context, key string, body io.Reader, contentType string) error {
-	// Use a 10-minute timeout for the upload. We don't use the request context directly as the primary
-	// because intermediate proxies (like Next.js rewrites) might time out the request context at 30s.
-	uploadCtx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
-	defer cancel()
-
-	_, err := s.s3Client.PutObject(uploadCtx, &s3.PutObjectInput{
-		Bucket:      aws.String(s.bucket),
-		Key:         aws.String(key),
-		Body:        body,
-		ContentType: aws.String(contentType),
-	})
-	return err
+// GetVideoUploadKey generates the S3 key for a video upload according to the recommended structure:
+// menus/videos/uploads/{uuidv7}.mp4
+// Using UUID V7 for better database indexing and temporal ordering.
+func (s *S3Service) GetVideoUploadKey(ext string) string {
+	if ext == "" {
+		ext = ".mp4"
+	}
+	id, err := uuid.NewV7()
+	if err != nil {
+		// Fallback to V4 if V7 fails for some reason
+		return fmt.Sprintf("menus/videos/uploads/%s%s", uuid.New().String(), ext)
+	}
+	return fmt.Sprintf("menus/videos/uploads/%s%s", id.String(), ext)
 }
 
 // InitiateMultipartUpload starts a multipart upload and returns the UploadId
@@ -126,6 +130,27 @@ func (s *S3Service) CompleteMultipartUpload(ctx context.Context, key, uploadID s
 	return s.GetCloudFrontURL(key), nil
 }
 
+// DirectUpload uploads a file directly from an io.Reader to S3.
+// Useful for smaller files or when client-side direct upload is not preferred.
+func (s *S3Service) DirectUpload(ctx context.Context, key string, body io.Reader, contentType string) error {
+	// Use a 10-minute timeout for the upload. We don't use the request context directly as the primary
+	// because intermediate proxies (like Next.js rewrites) might time out the request context at 30s.
+	uploadCtx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
+
+	_, err := s.s3Client.PutObject(uploadCtx, &s3.PutObjectInput{
+		Bucket:      aws.String(s.bucket),
+		Key:         aws.String(key),
+		Body:        body,
+		ContentType: aws.String(contentType),
+	})
+	return err
+}
+
+
+
+
+
 // AbortMultipartUpload aborts a multipart upload
 func (s *S3Service) AbortMultipartUpload(ctx context.Context, key, uploadID string) error {
 	_, err := s.s3Client.AbortMultipartUpload(ctx, &s3.AbortMultipartUploadInput{
@@ -136,26 +161,6 @@ func (s *S3Service) AbortMultipartUpload(ctx context.Context, key, uploadID stri
 	return err
 }
 
-// GetMenuImageKey generates the S3 key for a menu image according to the recommended structure:
-// menus/images/menu/{userId}/avatar.webp (or other extensions)
-func (s *S3Service) GetMenuImageKey(userId string, filename string) string {
-	return fmt.Sprintf("menus/images/menu/%s/%s", userId, filename)
-}
-
-// GetVideoUploadKey generates the S3 key for a video upload according to the recommended structure:
-// menus/videos/uploads/{uuidv7}.mp4
-// Using UUID V7 for better database indexing and temporal ordering.
-func (s *S3Service) GetVideoUploadKey(ext string) string {
-	if ext == "" {
-		ext = ".mp4"
-	}
-	id, err := uuid.NewV7()
-	if err != nil {
-		// Fallback to V4 if V7 fails for some reason
-		return fmt.Sprintf("menus/videos/uploads/%s%s", uuid.New().String(), ext)
-	}
-	return fmt.Sprintf("menus/videos/uploads/%s%s", id.String(), ext)
-}
 
 // GetCloudFrontURL returns the public URL for a given S3 key via CloudFront.
 func (s *S3Service) GetCloudFrontURL(key string) string {

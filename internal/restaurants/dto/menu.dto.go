@@ -1,6 +1,10 @@
 package dto
 
-import commondto "github.com/alibaba0010/postgres-api/internal/common/dto"
+import (
+	"io"
+
+	commondto "github.com/alibaba0010/postgres-api/internal/common/dto"
+)
 
 // CreateMenuInput represents the input for creating a menu item
 type CreateMenuInput struct {
@@ -61,7 +65,15 @@ type InitiateMultipartUploadResponse struct {
 	Key           string   `json:"key"`
 	PresignedURLs []string `json:"presigned_urls,omitempty"` // For pre-calculating parts if needed
 }
-
+type InitiateMultipartUploadResponseHandler struct {
+	Title string 	`json:"title"`
+	Response 		 InitiateMultipartUploadResponse `json:"response"`
+}
+// 
+type GenerateMultipartPartURLResponse struct{
+	Title string `json:"title"`
+	Response string `json:"response"`
+}
 // CompleteMultipartUploadInput represents the request to finalize a multipart upload
 type CompleteMultipartUploadInput struct {
 	UploadID string          `json:"upload_id" validate:"required"`
@@ -69,8 +81,41 @@ type CompleteMultipartUploadInput struct {
 	Parts    []CompletedPart `json:"parts" validate:"required"`
 }
 
+
+type CompleteMultipartUploadResponse struct {
+	Title string	`json:"title"`
+	Response string `json:"response"`
+}
+type GetMenuUploadURLInput struct {
+	Filename    string `json:"filename" validate:"required"`
+	ContentType string `json:"content_type" validate:"required"`
+}
+type GetMenuUploadURLResponse struct {
+	Title string	`json:"title"`
+	Response URLResponse `json:"response"`
+}
+type URLResponse struct {
+	UploadURL string `json:"upload_url"`
+	PublicURL string `json:"public_url"`
+}
+type UploadMenuMediaInput struct {
+	Filename    string `json:"filename" validate:"required"`
+	ContentType string `json:"content_type" validate:"required"`
+	Body        io.Reader `json:"body" validate:"required"`
+}
+
+type UploadMenuMediaResponse struct {
+	Title string	`json:"title"`
+	Response string `json:"response"`
+}
+
 // CompletedPart represents a single part of a multipart upload
 type CompletedPart struct {
 	PartNumber int32  `json:"part_number"`
 	ETag       string `json:"etag"`
+}
+
+type GetMenuByIDResponse struct {
+	Title string	`json:"title"`
+	Response MenuResponse `json:"response"`
 }

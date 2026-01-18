@@ -17,19 +17,20 @@ func MenuRoutes(route *mux.Router) {
 	menus := route.PathPrefix("/menus").Subrouter()
 	managementRole := guards.RequireRole(types.RoleManagement.String())
 
+	// Protected Routes - Only Management can CREATE, UPDATE menus and UPLOAD media
 	// Multipart Upload Routes
 	multipart := menus.PathPrefix("/multipart").Subrouter()
 	multipart.Use(guards.AuthMiddleware, managementRole)
 	multipart.HandleFunc("/initiate", controllers.InitiateMultipartUploadHandler).Methods("POST")
 	multipart.HandleFunc("/part-url", controllers.GenerateMultipartPartURLHandler).Methods("GET")
 	multipart.HandleFunc("/complete", controllers.CompleteMultipartUploadHandler).Methods("POST")
-
-	// Protected Routes - Only Management can CREATE, UPDATE menus and UPLOAD media
+	
+	// Direct Upload (POST /menus/upload)
+	menus.Handle("/upload", guards.AuthMiddleware(managementRole(http.HandlerFunc(controllers.UploadMenuMediaHandler)))).Methods("POST")
+	
 	// Get Upload URL (GET /menus/upload-url)
 	menus.Handle("/upload-url", guards.AuthMiddleware(managementRole(http.HandlerFunc(controllers.GetMenuUploadURLHandler)))).Methods("GET")
 
-	// Direct Upload (POST /menus/upload)
-	menus.Handle("/upload", guards.AuthMiddleware(managementRole(http.HandlerFunc(controllers.UploadMenuMediaHandler)))).Methods("POST")
 
 	// Public Routes
 	// List Menus with filters - Public with strict rate limiting (5 req/sec, burst 10)
