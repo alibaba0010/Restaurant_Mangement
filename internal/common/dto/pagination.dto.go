@@ -9,11 +9,12 @@ type PaginationMeta struct {
 }
 
 // PaginatedResponse is a generic wrapper for paginated data
-type PaginatedResponse struct {
+type PaginatedResponse[T any] struct {
 	Title string         `json:"title,omitempty"`
-	Data  interface{}    `json:"data"`
+	Data  []T            `json:"data"`
 	Meta  PaginationMeta `json:"meta"`
 }
+
 // CursorMeta provides cursor-based pagination details
 type CursorMeta struct {
 	NextCursor string `json:"next_cursor"`
@@ -22,8 +23,8 @@ type CursorMeta struct {
 }
 
 // CursorPaginatedResponse is a generic wrapper for cursor paginated data
-type CursorPaginatedResponse struct {
-	Title string      `json:"title,omitempty"`
-	Data  interface{} `json:"data"`
-	Meta  CursorMeta  `json:"meta"`
+type CursorPaginatedResponse[T any] struct {
+	Title string     `json:"title,omitempty"`
+	Data  []T        `json:"data"`
+	Meta  CursorMeta `json:"meta"`
 }

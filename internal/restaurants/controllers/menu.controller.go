@@ -230,9 +230,9 @@ func CreateMenuHandler(writer http.ResponseWriter, request *http.Request) {
 		return
 	}
 
-	utils.WriteJSON(writer, http.StatusCreated, map[string]any{
-		"title": "Menu item created successfully",
-		"data":  menu,
+	utils.WriteJSON(writer, http.StatusCreated, commondto.SingleDataResponse[*dto.MenuResponse]{
+		Title: "Menu item created successfully",
+		Data:  menu,
 	})
 }
 
@@ -334,8 +334,8 @@ func UpdateMenuHandler(writer http.ResponseWriter, request *http.Request) {
 		return
 	}
 
-	utils.WriteJSON(writer, http.StatusOK, map[string]any{
-		"title": "Menu item updated successfully",
-		"data":  updatedMenu,
+	utils.WriteJSON(writer, http.StatusOK, commondto.SingleDataResponse[*dto.MenuResponse]{
+		Title: "Menu item updated successfully",
+		Data:  updatedMenu,
 	})
 }

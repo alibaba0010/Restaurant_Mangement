@@ -43,9 +43,9 @@ func CreateRestaurantHandler(writer http.ResponseWriter, request *http.Request) 
 		return
 	}
 
-	utils.WriteJSON(writer, http.StatusCreated, map[string]any{
-		"title": "Created Restaurant Successfully",
-		"data":  resp,
+	utils.WriteJSON(writer, http.StatusCreated, commondto.SingleDataResponse[*dto.RestaurantResponse]{
+		Title: "Created Restaurant Successfully",
+		Data:  resp,
 	})
 }
 
@@ -75,9 +75,9 @@ func GetRestaurantHandler(writer http.ResponseWriter, request *http.Request) {
 		}
 	}
 
-	utils.WriteJSON(writer, http.StatusOK, map[string]interface{}{
-		"title": "Retrieved Restaurant Successfully",
-		"data":  resp,
+	utils.WriteJSON(writer, http.StatusOK, commondto.SingleDataResponse[*dto.RestaurantResponse]{
+		Title: "Retrieved Restaurant Successfully",
+		Data:  resp,
 	})
 }
 
@@ -194,8 +194,8 @@ func UpdateRestaurantHandler(writer http.ResponseWriter, request *http.Request) 
 		return
 	}
 
-	utils.WriteJSON(writer, http.StatusOK, map[string]interface{}{
-		"title": "Updated Restaurant Successfully",
-		"data":  resp,
+	utils.WriteJSON(writer, http.StatusOK, commondto.SingleDataResponse[*dto.RestaurantResponse]{
+		Title: "Updated Restaurant Successfully",
+		Data:  resp,
 	})
 }

@@ -7,14 +7,17 @@ import (
 	"time"
 )
 
+// CursorValue is a type alias for any to be explicit about potentially mixed types
+type CursorValue any
+
 // Cursor represents the decoded cursor data
 type Cursor struct {
-	LastValue interface{} `json:"v"`  // Short key to save space
+	LastValue CursorValue `json:"v"`  // Short key to save space
 	LastID    string      `json:"id"` // Unique tie-breaker
 }
 
 // EncodeCursor generates a base64 encoded cursor string
-func EncodeCursor(lastValue interface{}, lastID string) string {
+func EncodeCursor(lastValue CursorValue, lastID string) string {
 	c := Cursor{LastValue: lastValue, LastID: lastID}
 	b, err := json.Marshal(c)
 	if err != nil {
@@ -41,7 +44,7 @@ func DecodeCursor(cursorStr string) (*Cursor, error) {
 
 // GetCursorValueAsTime is a helper to safely cast the generic interface to time.Time
 // JSON unmarshalling often results in string for time, so we need to parse it.
-func GetCursorValueAsTime(val interface{}) time.Time {
+func GetCursorValueAsTime(val CursorValue) time.Time {
 	if val == nil {
 		return time.Time{}
 	}
@@ -58,7 +61,7 @@ func GetCursorValueAsTime(val interface{}) time.Time {
 }
 
 // GetCursorValueAsString helper
-func GetCursorValueAsString(val interface{}) string {
+func GetCursorValueAsString(val CursorValue) string {
 	if s, ok := val.(string); ok {
 		return s
 	}
@@ -66,7 +69,7 @@ func GetCursorValueAsString(val interface{}) string {
 }
 
 // GetCursorValueAsFloat helper
-func GetCursorValueAsFloat(val interface{}) float64 {
+func GetCursorValueAsFloat(val CursorValue) float64 {
 	if f, ok := val.(float64); ok {
 		return f
 	}

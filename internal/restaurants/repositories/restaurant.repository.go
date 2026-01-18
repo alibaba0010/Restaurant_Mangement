@@ -67,8 +67,9 @@ func (r *RestaurantRepository) FindAll(ctx context.Context, limit int, cursorStr
 			op = "<"
 		}
 
+
 		// Handle type casting for cursor value based on sortBy field
-		var cursorVal interface{}
+		var cursorVal utils.CursorValue
 		switch sortBy {
 		case "created_at":
 			cursorVal = utils.GetCursorValueAsTime(decoded.LastValue)
@@ -103,7 +104,7 @@ func (r *RestaurantRepository) FindAll(ctx context.Context, limit int, cursorStr
 		lastItem := restaurants[limit-1]
 
 		// Encode next cursor
-		var lastVal interface{}
+		var lastVal utils.CursorValue
 		switch sortBy {
 		case "created_at":
 			lastVal = lastItem.CreatedAt

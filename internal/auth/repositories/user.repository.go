@@ -84,7 +84,8 @@ func (r *UserRepository) FindAll(ctx context.Context, limit int, cursorStr, qStr
 			op = "<"
 		}
 
-		var cursorVal interface{}
+
+		var cursorVal utils.CursorValue
 		switch sortBy {
 		case "created_at":
 			cursorVal = utils.GetCursorValueAsTime(decoded.LastValue)
@@ -111,7 +112,7 @@ func (r *UserRepository) FindAll(ctx context.Context, limit int, cursorStr, qStr
 		users = users[:limit]
 		lastItem := users[limit-1]
 
-		var lastVal interface{}
+		var lastVal utils.CursorValue
 		switch sortBy {
 		case "created_at":
 			lastVal = lastItem.CreatedAt

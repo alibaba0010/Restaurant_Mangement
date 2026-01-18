@@ -73,7 +73,8 @@ func (r *MenuRepository) FindAll(ctx context.Context, limit int, cursorStr strin
 			op = "<"
 		}
 
-		var cursorVal interface{}
+
+		var cursorVal utils.CursorValue
 		switch sortBy {
 		case "created_at":
 			cursorVal = utils.GetCursorValueAsTime(decoded.LastValue)
@@ -82,6 +83,7 @@ func (r *MenuRepository) FindAll(ctx context.Context, limit int, cursorStr strin
 		default:
 			cursorVal = utils.GetCursorValueAsString(decoded.LastValue)
 		}
+
 
 		sel = sel.Where(fmt.Sprintf("(%s, id) %s (?, ?)", sortBy, op), cursorVal, decoded.LastID)
 	}
@@ -101,7 +103,7 @@ func (r *MenuRepository) FindAll(ctx context.Context, limit int, cursorStr strin
 		menus = menus[:limit]
 		lastItem := menus[limit-1]
 
-		var lastVal interface{}
+		var lastVal utils.CursorValue
 		switch sortBy {
 		case "created_at":
 			lastVal = lastItem.CreatedAt
