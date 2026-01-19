@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"net"
 	"strings"
 	"time"
 
@@ -379,8 +380,23 @@ func RefreshTokenWithRotation(ctx context.Context, refreshToken, ip, userAgent s
 
 	// Validate IP and User-Agent if they were recorded with the token
 	if rt.IPAddress != "" && ip != "" && strings.TrimSpace(rt.IPAddress) != strings.TrimSpace(ip) {
-		logger.Log.Warn("refresh token IP mismatch", zap.String("expected", rt.IPAddress), zap.String("got", ip))
-		return nil, errors.UnauthorizedError("refresh token validation failed")
+		// Attempt to parse both IPs to check if they are both loopback addresses
+		// This handles the case where one is [::1] and the other is 127.0.0.1 (common in dev/localhost)
+		rtIP := net.ParseIP(strings.Trim(rt.IPAddress, "[]"))
+		gotIP := net.ParseIP(strings.Trim(ip, "[]"))
+
+		isLoopbackMismatch := false
+		if rtIP != nil && gotIP != nil {
+			if rtIP.IsLoopback() && gotIP.IsLoopback() {
+				// Both are loopback, consider them matching
+				isLoopbackMismatch = true
+			}
+		}
+
+		if !isLoopbackMismatch {
+			logger.Log.Warn("refresh token IP mismatch", zap.String("expected", rt.IPAddress), zap.String("got", ip))
+			return nil, errors.UnauthorizedError("refresh token validation failed")
+		}
 	}
 	if rt.UserAgent != "" && userAgent != "" && strings.TrimSpace(rt.UserAgent) != strings.TrimSpace(userAgent) {
 		logger.Log.Warn("refresh token user-agent mismatch", zap.String("expected", rt.UserAgent), zap.String("got", userAgent))

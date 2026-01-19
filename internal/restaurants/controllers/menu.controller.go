@@ -63,8 +63,8 @@ func InitiateMultipartUploadHandler(writer http.ResponseWriter, request *http.Re
 	}
 
 	utils.WriteJSON(writer, http.StatusCreated, dto.InitiateMultipartUploadResponseHandler{
-		Title:    "Multipart upload initiated",
-		Response: *resp,
+		Title: "Multipart upload initiated",
+		Data:  *resp,
 	})
 }
 
@@ -94,7 +94,7 @@ func GenerateMultipartPartURLHandler(writer http.ResponseWriter, request *http.R
 
 	utils.WriteJSON(writer, http.StatusOK, dto.GenerateMultipartPartURLResponse{
 		Title: "Presigned part URL generated",
-		Response: url,
+		Data:  url,
 	})
 }
 
@@ -114,19 +114,14 @@ func CompleteMultipartUploadHandler(writer http.ResponseWriter, request *http.Re
 
 	utils.WriteJSON(writer, http.StatusOK, dto.CompleteMultipartUploadResponse{
 		Title: "Multipart upload completed",
-		Response: publicURL,
+		Data:  dto.SingleURLResponse{URL: publicURL},
 	})
 }
 
 // GetMenuUploadURLHandler handles the request for a presigned URL for menu media uploads
 func GetMenuUploadURLHandler(writer http.ResponseWriter, request *http.Request) {
-	var input dto.GetMenuUploadURLInput
-	if err := json.NewDecoder(request.Body).Decode(&input); err != nil {
-		errors.ErrorResponse(writer, request, errors.ValidationError("Invalid request body"))
-		return
-	}
-	filename := input.Filename
-	contentType := input.ContentType
+	filename := request.URL.Query().Get("filename")
+	contentType := request.URL.Query().Get("content_type")
 
 	if filename == "" || contentType == "" {
 		errors.ErrorResponse(writer, request, errors.ValidationError("filename and content_type are required"))
@@ -153,7 +148,7 @@ func GetMenuUploadURLHandler(writer http.ResponseWriter, request *http.Request) 
 
 	utils.WriteJSON(writer, http.StatusOK, dto.GetMenuUploadURLResponse{
 		Title: "Presigned URL generated successfully",
-		Response: dto.URLResponse{
+		Data: dto.URLResponse{
 			UploadURL: uploadURL,
 			PublicURL: publicURL,
 		},
@@ -199,7 +194,7 @@ func UploadMenuMediaHandler(writer http.ResponseWriter, request *http.Request) {
 
 	utils.WriteJSON(writer, http.StatusOK, dto.UploadMenuMediaResponse{
 		Title: "Upload successful",
-		Response: publicURL,
+		Data:  dto.SingleURLResponse{URL: publicURL},
 	})
 }
 

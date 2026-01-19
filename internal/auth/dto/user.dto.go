@@ -23,7 +23,7 @@ type UserData struct {
 type UsersListResponse struct {
 	Title string               `json:"title"`
 	Data  []UserData           `json:"data"`
-	Meta  commondto.CursorMeta `json:"meta"`
+	Meta  commondto.PaginationMeta `json:"meta"`
 }
 
 // UpdateUserRoleInput is used for updating a user's role and status

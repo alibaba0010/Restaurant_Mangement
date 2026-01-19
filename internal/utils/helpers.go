@@ -67,7 +67,6 @@ func SetAuthCookies(writer http.ResponseWriter, accessToken, refreshToken string
 // SetRefreshTokenCookie sets a refresh token HTTP-only cookie with proper security settings.
 // The Secure flag is automatically set to true if the frontend URL is HTTPS.
 func SetRefreshTokenCookie(writer http.ResponseWriter, refreshToken string, tokenDuration time.Duration) {
-	logger.Log.Info("Refresh token value: ", zap.String("Refresh Token......", refreshToken))
 	cfg := config.LoadConfig()
 	isSecure := strings.HasPrefix(cfg.FRONTEND_URL, "https")
 

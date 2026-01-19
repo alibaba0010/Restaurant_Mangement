@@ -67,12 +67,12 @@ type InitiateMultipartUploadResponse struct {
 }
 type InitiateMultipartUploadResponseHandler struct {
 	Title string 	`json:"title"`
-	Response 		 InitiateMultipartUploadResponse `json:"response"`
+	Data 		 InitiateMultipartUploadResponse `json:"data"`
 }
 // 
 type GenerateMultipartPartURLResponse struct{
 	Title string `json:"title"`
-	Response string `json:"response"`
+	Data string `json:"data"`
 }
 // CompleteMultipartUploadInput represents the request to finalize a multipart upload
 type CompleteMultipartUploadInput struct {
@@ -84,7 +84,11 @@ type CompleteMultipartUploadInput struct {
 
 type CompleteMultipartUploadResponse struct {
 	Title string	`json:"title"`
-	Response string `json:"response"`
+	Data  SingleURLResponse `json:"data"`
+}
+
+type SingleURLResponse struct {
+    URL string `json:"url"`
 }
 type GetMenuUploadURLInput struct {
 	Filename    string `json:"filename" validate:"required"`
@@ -92,7 +96,7 @@ type GetMenuUploadURLInput struct {
 }
 type GetMenuUploadURLResponse struct {
 	Title string	`json:"title"`
-	Response URLResponse `json:"response"`
+	Data URLResponse `json:"data"`
 }
 type URLResponse struct {
 	UploadURL string `json:"upload_url"`
@@ -106,7 +110,7 @@ type UploadMenuMediaInput struct {
 
 type UploadMenuMediaResponse struct {
 	Title string	`json:"title"`
-	Response string `json:"response"`
+	Data  SingleURLResponse `json:"data"`
 }
 
 // CompletedPart represents a single part of a multipart upload
