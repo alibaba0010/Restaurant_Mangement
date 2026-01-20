@@ -22,7 +22,7 @@ func MenuRoutes(route *mux.Router) {
 	multipart := menus.PathPrefix("/multipart").Subrouter()
 	multipart.Use(guards.AuthMiddleware, managementRole)
 	multipart.HandleFunc("/initiate", controllers.InitiateMultipartUploadHandler).Methods("POST")
-	multipart.HandleFunc("/part-url", controllers.GenerateMultipartPartURLHandler).Methods("GET")
+	multipart.HandleFunc("/part-url", controllers.GetMultipartPartURLHandler).Methods("GET")
 	multipart.HandleFunc("/complete", controllers.CompleteMultipartUploadHandler).Methods("POST")
 	
 	// Direct Upload (POST /menus/upload)

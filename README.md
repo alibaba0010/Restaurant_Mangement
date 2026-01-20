@@ -11,8 +11,10 @@ A robust REST API built with Go, featuring PostgreSQL integration, structured lo
 - **Router**: Using `gorilla/mux` for HTTP routing
 - **Error Handling**: Centralized error handling system
 - **Middleware Support**: Authentication and logging middleware
-- **Redis Cache**: Redis integration for caching (optional)
-- **AWS S3 Integration**: High-performance media uploads using Presigned URLs for low-latency direct client uploads, with a robust Go server fallback.
+- **High-Performance Pagination**: Cursor-based pagination for scalable data retrieval.
+- **Redis Integration**: Caching layer for optimized menu listings and token management.
+- **Event-Driven Architecture**: Event streaming support for real-time updates (e.g., MenuUpdated events).
+- **AWS S3 & Multipart Uploads**: Advanced media handling with presigned URLs and multipart support for large video files.
 - **CloudFront Content Delivery**: Optimized serving of menu images and videos.
 
 ## 📋 Prerequisites

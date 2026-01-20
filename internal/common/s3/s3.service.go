@@ -100,7 +100,7 @@ func (s *S3Service) InitiateMultipartUpload(ctx context.Context, key, contentTyp
 }
 
 // GeneratePresignPartURL generates a presigned URL for a specific part of a multipart upload
-func (s *S3Service) GeneratePresignPartURL(ctx context.Context, key, uploadID string, partNumber int32) (string, error) {
+func (s *S3Service) GetPresignedPartURL(ctx context.Context, key, uploadID string, partNumber int32) (string, error) {
 	ps := s3.NewPresignClient(s.s3Client)
 	req, err := ps.PresignUploadPart(ctx, &s3.UploadPartInput{
 		Bucket:     aws.String(s.bucket),

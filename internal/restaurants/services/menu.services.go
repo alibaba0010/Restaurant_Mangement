@@ -53,7 +53,7 @@ func MapMenuToResponse(m *models.Menu) *dto.MenuResponse {
 	}
 }
 
-// InitiateMultipartUpload starts a multipart upload and returns details
+// InitiateMultipartUpload starts a multipart upload and returns uploadid and unique key 
 func InitiateMultipartUpload(ctx context.Context, userID, filename, contentType string) (*dto.InitiateMultipartUploadResponse, error) {
 	s3Service, err := s3.NewS3Service(ctx)
 	if err != nil {
@@ -73,14 +73,14 @@ func InitiateMultipartUpload(ctx context.Context, userID, filename, contentType 
 	}, nil
 }
 
-// GeneratePartPresignedURL generates a presigned URL for a specific part
-func GeneratePartPresignedURL(ctx context.Context, key, uploadID string, partNumber int32) (string, error) {
+// GetPartPresignedURL generates a presigned URL for a specific part
+func GetPartPresignedURL(ctx context.Context, key, uploadID string, partNumber int32) (string, error) {
 	s3Service, err := s3.NewS3Service(ctx)
 	if err != nil {
 		return "", err
 	}
 
-	return s3Service.GeneratePresignPartURL(ctx, key, uploadID, partNumber)
+	return s3Service.GetPresignedPartURL(ctx, key, uploadID, partNumber)
 }
 
 // CompleteMultipartUpload completes the multipart upload

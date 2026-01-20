@@ -41,7 +41,7 @@ func verifyRestaurantOwnership(ctx context.Context, restaurantID string, userID 
 	return nil
 }
 
-// InitiateMultipartUploadHandler handles the initiation of a multipart upload
+// InitiateMultipartUploadHandler handles the initiation of a multipart upload, returns upload id and key
 func InitiateMultipartUploadHandler(writer http.ResponseWriter, request *http.Request) {
 	var input dto.InitiateMultipartUploadInput
 
@@ -68,8 +68,8 @@ func InitiateMultipartUploadHandler(writer http.ResponseWriter, request *http.Re
 	})
 }
 
-// GenerateMultipartPartURLHandler handles generating a presigned URL for a part
-func GenerateMultipartPartURLHandler(writer http.ResponseWriter, request *http.Request) {
+// GetMultipartPartURLHandler handles generating a presigned URL for a part
+func GetMultipartPartURLHandler(writer http.ResponseWriter, request *http.Request) {
 	query := request.URL.Query()
 	key := query.Get("key")
 	uploadID := query.Get("upload_id")
@@ -86,7 +86,7 @@ func GenerateMultipartPartURLHandler(writer http.ResponseWriter, request *http.R
 		return
 	}
 
-	url, err := services.GeneratePartPresignedURL(request.Context(), key, uploadID, int32(partNumber))
+	url, err := services.GetPartPresignedURL(request.Context(), key, uploadID, int32(partNumber))
 	if err != nil {
 		errors.ErrorResponse(writer, request, errors.InternalError(err))
 		return
