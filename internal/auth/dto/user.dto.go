@@ -1,6 +1,7 @@
 package dto
 
 import (
+	"github.com/alibaba0010/postgres-api/internal/common/address"
 	commondto "github.com/alibaba0010/postgres-api/internal/common/dto"
 	"github.com/alibaba0010/postgres-api/internal/common/types"
 )
@@ -15,6 +16,8 @@ type UserData struct {
 	AvatarURL   string           `json:"avatar_url,omitempty"`
 	PhoneNumber string           `json:"phone_number,omitempty"`
 	Status      types.UserStatus `json:"status"`
+	Latitude    float64          `json:"latitude,omitempty"`
+	Longitude   float64          `json:"longitude,omitempty"`
 	CreatedAt   string           `json:"created_at"`
 	UpdatedAt   string           `json:"updated_at"`
 }
@@ -39,6 +42,6 @@ type UpdateUserResponse struct {
 }
 // UpdateUserInput is used for updating a user's address or phone number
 type UpdateUserInput struct {
-	Address     string `json:"address" validate:"omitempty,min=5,max=255"`
-	PhoneNumber string `json:"phone_number" validate:"omitempty,min=10,max=15"`
+	Address     *address.AddressInput `json:"address" validate:"omitempty"`
+	PhoneNumber string                `json:"phone_number" validate:"omitempty,min=10,max=15"`
 }

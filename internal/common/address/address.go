@@ -30,7 +30,7 @@ type AddressInput struct {
 }
 
 // Service defines the interface for address related operations.
-type Service interface {
+type AddressService interface {
 	// Geocode converts a free-form address string to coordinates and returns the formatted address.
 	Geocode(ctx context.Context, fullAddress string) (*Coordinates, string, *errors.AppError)
 
@@ -51,7 +51,7 @@ type addressService struct {
 // NewService creates a new instance of the address service.
 // Currently uses OpenStreetMap. In a production environment, this should ideally be configurable
 // (e.g., Google Maps, MapQuest) via options or config.
-func NewService() Service {
+func NewService() AddressService {
 	return &addressService{
 		geocoder: openstreetmap.Geocoder(),
 	}

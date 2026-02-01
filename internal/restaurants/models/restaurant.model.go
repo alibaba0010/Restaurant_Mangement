@@ -30,6 +30,8 @@ type Restaurant struct {
 	DeliveryAvailable bool             `bun:",notnull,default:false" json:"delivery_available"`
 	TakeawayAvailable bool             `bun:",notnull,default:false" json:"takeaway_available"`
 	Rating            float64          `bun:",nullzero" json:"rating"`
+	Latitude          float64          `bun:",nullzero" json:"latitude"`
+	Longitude         float64          `bun:",nullzero" json:"longitude"`
 	CreatedAt         time.Time        `bun:",nullzero,notnull,default:current_timestamp" json:"created_at"`
 	UpdatedAt         time.Time        `bun:",nullzero,notnull,default:current_timestamp" json:"updated_at"`
 }

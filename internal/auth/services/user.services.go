@@ -8,10 +8,12 @@ import (
 	"github.com/alibaba0010/postgres-api/internal/auth/dto"
 	"github.com/alibaba0010/postgres-api/internal/auth/models"
 	"github.com/alibaba0010/postgres-api/internal/auth/repositories"
+	"github.com/alibaba0010/postgres-api/internal/common/address"
 	"github.com/alibaba0010/postgres-api/internal/common/errors"
 	"github.com/alibaba0010/postgres-api/internal/common/logger"
 	"github.com/alibaba0010/postgres-api/internal/common/types"
 	"github.com/alibaba0010/postgres-api/internal/database"
+	"github.com/alibaba0010/postgres-api/internal/utils"
 	"github.com/go-playground/validator/v10"
 	"go.uber.org/zap"
 )
@@ -27,12 +29,30 @@ func mapToCurrentUserResponse(user *models.User) dto.UserData {
 		Status:      user.Status,
 		AvatarURL:   user.AvatarURL,
 		PhoneNumber: user.PhoneNumber,
+		Latitude:    user.Latitude,
+		Longitude:   user.Longitude,
 		CreatedAt:   user.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 		UpdatedAt:   user.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
 	}
 }
 
-// getUserByID returns a user by id using repository
+type UserService interface {
+	// getUserByID returns a user by id using repository
+	getUserByID(ctx context.Context, userID string) (*models.User, *errors.AppError)
+	// GetUserByID retrieves user information by ID for either current user or by admin
+	GetUserByID(ctx context.Context, userID string) (*dto.UserData, *errors.AppError)
+	// UpdateUser updates a user's address or phone number
+	UpdateUser(ctx context.Context, userID string, input dto.UpdateUserInput) (*dto.UpdateUserResponse, *errors.AppError)
+	// GetAllUsers returns a paginated, filtered and sorted list of users.
+	GetAllUsers(ctx context.Context, page, pageSize int, qStr, role, sortBy, order string) ([]dto.UserData, int64, *errors.AppError)
+	// UpdateUserRoleStatus updates a user's role and/or status (admin or management)
+	UpdateUserRoleStatus(ctx context.Context, userID string, input dto.UpdateUserRoleInput) (*dto.UpdateUserResponse, *errors.AppError)
+	// GetUserByEmail retrieves a user by their email address
+	GetUserByEmail(ctx context.Context, email string) (*models.User, *errors.AppError)
+	// ValidateUserRole validates and converts a role string to UserRole type
+	ValidateUserRole(roleStr string) (types.UserRole, *errors.AppError)
+}
+
 func getUserByID(ctx context.Context, userID string) (*models.User, *errors.AppError) {
 	user, err := repositories.UserRepo.FindByID(ctx, userID)
 	if err != nil {
@@ -42,7 +62,6 @@ func getUserByID(ctx context.Context, userID string) (*models.User, *errors.AppE
 	return user, nil
 }
 
-// GetUserByID retrieves user information by ID for either current user or by admin 
 func GetUserByID(ctx context.Context, userID string) (*dto.UserData, *errors.AppError) {
 		user, appErr := getUserByID(ctx, userID)
 	if appErr != nil {
@@ -54,28 +73,10 @@ func GetUserByID(ctx context.Context, userID string) (*dto.UserData, *errors.App
 	return &response, nil
 }
 
-// UpdateUser updates a user's address or phone number
 func UpdateUser(ctx context.Context, userID string, input dto.UpdateUserInput) (*dto.UpdateUserResponse, *errors.AppError) {
 	// Validate input using the validator
-	validate := validator.New()
-	if err := validate.Struct(input); err != nil {
-		if ves, ok := err.(validator.ValidationErrors); ok {
-			var messages []string
-			for _, fe := range ves {
-				var msg string
-				switch fe.Tag() {
-				case "min":
-					msg = fe.Field() + " is too short"
-				case "max":
-					msg = fe.Field() + " is too long"
-				default:
-					msg = fe.Field() + " is invalid"
-				}
-				messages = append(messages, msg)
-			}
-			return nil, errors.ValidationErrors(messages)
-		}
-		return nil, errors.ValidationError("invalid user update input")
+	if err := utils.ValidateInput(input); err != nil {
+		return nil, err
 	}
 
 	// Fetch current user first to validate existence
@@ -100,15 +101,31 @@ func UpdateUser(ctx context.Context, userID string, input dto.UpdateUserInput) (
 
 	// Update the fields if provided
 	var fieldsToUpdate []string
-	if input.Address != "" {
-		user.Address = input.Address
-		fieldsToUpdate = append(fieldsToUpdate, "address")
+
+	// Update address if provided using Format -> Geocode pipeline
+	if input.Address != nil {
+		addressSvc := address.NewService()
+		fmtAddr, lat, lng, appErr := addressSvc.ProcessAddress(ctx, input.Address)
+		if appErr != nil {
+			return nil, appErr
+		}
+
+		// Only update if the formatted address has changed
+		if fmtAddr != user.Address {
+			user.Address = fmtAddr
+			user.Latitude = lat
+			user.Longitude = lng
+			fieldsToUpdate = append(fieldsToUpdate, "address", "latitude", "longitude")
+		}
 	}
-	if input.PhoneNumber != "" {
+
+	// Update phone number if provided and different
+	if input.PhoneNumber != "" && input.PhoneNumber != user.PhoneNumber {
 		user.PhoneNumber = input.PhoneNumber
 		fieldsToUpdate = append(fieldsToUpdate, "phone_number")
 	}
 
+	// If no fields changed, return early
 	if len(fieldsToUpdate) == 0 {
 		return &dto.UpdateUserResponse{
 			Title: "No changes",
@@ -116,10 +133,12 @@ func UpdateUser(ctx context.Context, userID string, input dto.UpdateUserInput) (
 		}, nil
 	}
 
+	// Set updated_at and add to fields to update
 	user.UpdatedAt = time.Now()
 	fieldsToUpdate = append(fieldsToUpdate, "updated_at")
 
-	err = repositories.UserRepo.UpdateInTx(ctx, tx, user, fieldsToUpdate...)
+	// Execute update within transaction
+	err = repositories.UserRepo.Update(ctx, tx, user, fieldsToUpdate...)
 	if err != nil {
 		logger.Log.Error("failed to update user info", zap.Error(err), zap.String("user_id", userID))
 		return nil, errors.TransactionError("updating user profile", err)
@@ -176,7 +195,6 @@ func GetAllUsers(ctx context.Context, page, pageSize int, qStr, role, sortBy, or
 	return result, total, nil
 }
 
-// ValidateUserRole checks if a user role is valid
 func ValidateUserRole(roleStr string) (types.UserRole, *errors.AppError) {
 	role, isValid := types.ToUserRole(roleStr)
 	if !isValid {
@@ -186,7 +204,6 @@ func ValidateUserRole(roleStr string) (types.UserRole, *errors.AppError) {
 	return role, nil
 }
 
-// GetUserByEmail retrieves a user by email address
 func GetUserByEmail(ctx context.Context, email string) (*models.User, *errors.AppError) {
 	user, err := repositories.UserRepo.FindByEmail(ctx, email)
 	if err != nil {
@@ -197,7 +214,6 @@ func GetUserByEmail(ctx context.Context, email string) (*models.User, *errors.Ap
 	return user, nil
 }
 
-// UpdateUserRoleStatus updates a user's role and/or status (admin or management)
 func UpdateUserRoleStatus(ctx context.Context, userID string, input dto.UpdateUserRoleInput) (*dto.UpdateUserResponse, *errors.AppError) {
 	// Validate input
 	validate := validator.New()
@@ -224,17 +240,22 @@ func UpdateUserRoleStatus(ctx context.Context, userID string, input dto.UpdateUs
 		}
 	}()
 
-	// Update role/status
+	// Update role/status - track which fields actually changed
 	var fieldsToUpdate []string
-	if input.Role != "" {
+
+	// Update role if provided and different
+	if input.Role != "" && input.Role != user.Role {
 		user.Role = input.Role
 		fieldsToUpdate = append(fieldsToUpdate, "role")
 	}
-	if input.Status != "" {
+
+	// Update status if provided and different
+	if input.Status != "" && input.Status != user.Status {
 		user.Status = input.Status
 		fieldsToUpdate = append(fieldsToUpdate, "status")
 	}
 
+	// If no fields changed, return early
 	if len(fieldsToUpdate) == 0 {
 		return &dto.UpdateUserResponse{
 			Title: "No changes",
@@ -242,14 +263,17 @@ func UpdateUserRoleStatus(ctx context.Context, userID string, input dto.UpdateUs
 		}, nil
 	}
 
+	// Set updated_at and add to fields to update
 	user.UpdatedAt = time.Now()
 	fieldsToUpdate = append(fieldsToUpdate, "updated_at")
 
-	err = repositories.UserRepo.UpdateInTx(ctx, tx, user, fieldsToUpdate...)
+	// Execute update within transaction
+	err = repositories.UserRepo.Update(ctx, tx, user, fieldsToUpdate...)
 	if err != nil {
 		return nil, errors.TransactionError("updating user role and status", err)
 	}
 
+	// Commit transaction
 	if err := tx.Commit(); err != nil {
 		return nil, errors.TransactionError("committing user role/status update", err)
 	}
