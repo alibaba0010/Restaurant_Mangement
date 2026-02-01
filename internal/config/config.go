@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"github.com/alibaba0010/postgres-api/internal/common/logger"
+
 	"github.com/joho/godotenv"
 	"go.uber.org/zap"
 )
@@ -45,6 +46,13 @@ type Config struct {
 	AWS_BUCKET_NAME         string
 	AWS_CLOUDFRONT_DOMAIN   string
 	REDPANDA_BROKERS        string
+	PAYSTACK_SECRET_KEY     string
+	MONNIFY_API_KEY         string
+	MONNIFY_SECRET_KEY      string
+	MONNIFY_CONTRACT_CODE   string
+	FLUTTERWAVE_SECRET_KEY  string
+	FLUTTERWAVE_PUBLIC_KEY  string
+	FLUTTERWAVE_HASH        string
 }
 
 func LoadConfig() Config {
@@ -54,7 +62,7 @@ func LoadConfig() Config {
 			logger.Log.Warn("No .env file found, using system environment variables", zap.Error(err))
 		}
 		cfg = Config{
-			Port:                    getEnv("PORT", "2000"),
+			Port:                    getEnv("PORT", "8001"),
 			DB_HOST:                 getEnv("DB_HOST", "localhost"),
 			DB_PORT:                 "5432",
 			DB_USERNAME:             getEnv("DB_USERNAME", "postgres"),
@@ -84,6 +92,13 @@ func LoadConfig() Config {
 			AWS_BUCKET_NAME:         getEnv("AWS_BUCKET_NAME", ""),
 			AWS_CLOUDFRONT_DOMAIN:   getEnv("AWS_CLOUDFRONT_DOMAIN", ""),
 			REDPANDA_BROKERS:        getEnv("REDPANDA_BROKERS", "localhost:9092"),
+			PAYSTACK_SECRET_KEY:     getEnv("PAYSTACK_SECRET_KEY", ""),
+			MONNIFY_API_KEY:         getEnv("MONNIFY_API_KEY", ""),
+			MONNIFY_SECRET_KEY:      getEnv("MONNIFY_SECRET_KEY", ""),
+			MONNIFY_CONTRACT_CODE:   getEnv("MONNIFY_CONTRACT_CODE", ""),
+			FLUTTERWAVE_SECRET_KEY:  getEnv("FLUTTERWAVE_SECRET_KEY", ""),
+			FLUTTERWAVE_PUBLIC_KEY:  getEnv("FLUTTERWAVE_PUBLIC_KEY", ""),
+			FLUTTERWAVE_HASH:        getEnv("FLUTTERWAVE_HASH", ""),
 		}
 	})
 	return cfg
