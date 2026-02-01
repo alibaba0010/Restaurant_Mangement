@@ -16,6 +16,7 @@ func customTimeEncoder(t time.Time, enc zapcore.PrimitiveArrayEncoder) {
 	enc.AppendString(t.Format("2006-01-02 15:04:05"))
 }
 
+// InitLogger initializes the logger
 func InitLogger() {
 	// Configure console output with colors
 	config := zap.NewDevelopmentEncoderConfig()
@@ -52,6 +53,7 @@ func InitLogger() {
 	Log = zap.New(core)
 }
 
+// Sync flushes any buffered log entries
 func Sync() {
 	if Log != nil {
 		_ = Log.Sync()

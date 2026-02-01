@@ -4,7 +4,6 @@ import (
 	"crypto/rand"
 	"strconv"
 
-	// "encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"net/http"
@@ -37,25 +36,9 @@ func GenerateToken() (string, error) {
 	return hex.EncodeToString(bytes), nil
 }
 
-// extractClientIP extracts the client IP from request headers with fallbacks.
+// ExtractClientIP extracts the client IP using the logger package's implementation.
 func ExtractClientIP(request *http.Request) string {
-	// Check X-Forwarded-For header (may be comma-separated)
-	if xf := request.Header.Get("X-Forwarded-For"); xf != "" {
-		parts := strings.Split(xf, ",")
-		return strings.TrimSpace(parts[0])
-	}
-
-	// Check X-Real-IP header
-	if xr := request.Header.Get("X-Real-Ip"); xr != "" {
-		return xr
-	}
-
-	// Fall back to RemoteAddr
-	remote := request.RemoteAddr
-	if i := strings.LastIndex(remote, ":"); i != -1 {
-		return remote[:i]
-	}
-	return remote
+	return logger.ExtractClientIP(request)
 }
 
 // SetAuthCookies sets both access and refresh token cookies.
