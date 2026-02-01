@@ -14,6 +14,12 @@ This directory contains the Swagger/OpenAPI documentation for the Restaurant Man
 
 - **restaurants.go** - Restaurant management endpoints documentation (list, create restaurants)
 
+- **menus.go** - Menu management endpoints documentation (list, create, update, delete menus)
+
+- **orders.go** - Order management endpoints documentation (list, create, update, delete orders)
+
+- **payments.go** - Payment management endpoints documentation
+
 - **definitions.go** - Data models/schemas used across all endpoints (User, SignupInput, Restaurant, Error, etc.)
 
 - **tags.go** - API tags organization for Swagger UI grouping

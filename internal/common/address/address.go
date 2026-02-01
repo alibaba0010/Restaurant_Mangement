@@ -29,7 +29,7 @@ type AddressInput struct {
 	CountryCode        string   `json:"country_code"` // ISO 3166-1 alpha-2
 }
 
-// Service defines the interface for address related operations.
+// Address Service defines the interface for address related operations.
 type AddressService interface {
 	// Geocode converts a free-form address string to coordinates and returns the formatted address.
 	Geocode(ctx context.Context, fullAddress string) (*Coordinates, string, *errors.AppError)

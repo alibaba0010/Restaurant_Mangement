@@ -216,6 +216,93 @@ const definitions = `
 				"data": { "type": "array", "items": { "$ref": "#/definitions/MenuResponse" } },
 				"meta": { "$ref": "#/definitions/PaginationMeta" }
 			}
+		},
+		"CreateOrderItemInput": {
+			"type": "object",
+			"properties": {
+				"menu_id": { "type": "string", "format": "uuid" },
+				"quantity": { "type": "integer", "minimum": 1 }
+			},
+			"required": ["menu_id", "quantity"]
+		},
+		"CreateOrderInput": {
+			"type": "object",
+			"properties": {
+				"restaurant_id": { "type": "string", "format": "uuid" },
+				"delivery_address": { "type": "string" },
+				"items": { "type": "array", "items": { "$ref": "#/definitions/CreateOrderItemInput" } }
+			},
+			"required": ["restaurant_id", "delivery_address", "items"]
+		},
+		"OrderItemResponse": {
+			"type": "object",
+			"properties": {
+				"id": { "type": "string", "format": "uuid" },
+				"menu_id": { "type": "string", "format": "uuid" },
+				"name": { "type": "string" },
+				"quantity": { "type": "integer" },
+				"price": { "type": "number" }
+			}
+		},
+		"OrderResponse": {
+			"type": "object",
+			"properties": {
+				"id": { "type": "string", "format": "uuid" },
+				"user_id": { "type": "string", "format": "uuid" },
+				"restaurant_id": { "type": "string", "format": "uuid" },
+				"total_amount": { "type": "number" },
+				"status": { "type": "string" },
+				"delivery_address": { "type": "string" },
+				"created_at": { "type": "string", "format": "date-time" },
+				"updated_at": { "type": "string", "format": "date-time" },
+				"items": { "type": "array", "items": { "$ref": "#/definitions/OrderItemResponse" } }
+			}
+		},
+		"UpdateOrderStatusInput": {
+			"type": "object",
+			"properties": {
+				"status": { "type": "string", "enum": ["pending", "processing", "completed", "cancelled"] }
+			},
+			"required": ["status"]
+		},
+		"UserOrdersResponse": {
+			"type": "object",
+			"properties": {
+				"orders": { "type": "array", "items": { "$ref": "#/definitions/OrderResponse" } },
+				"next_cursor": { "type": "string" },
+				"has_more": { "type": "boolean" }
+			}
+		},
+		"InitiatePaymentRequest": {
+			"type": "object",
+			"properties": {
+				"order_id": { "type": "string", "format": "uuid" },
+				"provider": { "type": "string", "enum": ["monnify", "paystack", "flutterwave"] },
+				"callback_url": { "type": "string", "format": "url" }
+			},
+			"required": ["order_id", "provider", "callback_url"]
+		},
+		"InitiatePaymentResponse": {
+			"type": "object",
+			"properties": {
+				"payment_id": { "type": "string", "format": "uuid" },
+				"authorization_url": { "type": "string" },
+				"access_code": { "type": "string" },
+				"reference": { "type": "string" }
+			}
+		},
+		"PaymentResponse": {
+			"type": "object",
+			"properties": {
+				"id": { "type": "string", "format": "uuid" },
+				"order_id": { "type": "string", "format": "uuid" },
+				"amount": { "type": "number" },
+				"currency": { "type": "string" },
+				"provider": { "type": "string" },
+				"status": { "type": "string" },
+				"reference": { "type": "string" },
+				"created_at": { "type": "string", "format": "date-time" }
+			}
 		}
 	}
 
