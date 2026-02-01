@@ -10,9 +10,10 @@ import (
 
 // ErrorResponse defines what gets sent to the client
 type ErrorResponseStruct struct {
-	Title    string   `json:"title"`
-	Message  string   `json:"message,omitempty"`
-	Messages []string `json:"messages,omitempty"`
+	Title     string   `json:"title"`
+	Message   string   `json:"message,omitempty"`
+	Messages  []string `json:"messages,omitempty"`
+	RequestID string   `json:"request_id,omitempty"`
 }
 
 // AppError wraps any error with a title and HTTP status
@@ -50,23 +51,31 @@ func ErrorResponse(writer http.ResponseWriter, request *http.Request, appErr *Ap
 	writer.Header().Set("Content-Type", "application/json")
 	writer.WriteHeader(appErr.Status)
 	requestPath := request.URL.Path
+	requestID := logger.GetRequestID(request.Context())
+
 	// Log minimal info only. Do NOT print internal error details or stack traces to console.
 	// For client-side/non-critical errors (4xx) log as Info; for server errors (5xx) log as Error
+	logFields := []zap.Field{
+		zap.Int("status", appErr.Status),
+		zap.String("path", requestPath),
+		zap.String("request_id", requestID),
+	}
+
 	if appErr.Status >= 500 {
 		if appErr.Err != nil {
-			logger.Log.Error(appErr.Title, zap.Int("status", appErr.Status), zap.String("path", requestPath), zap.Error(appErr.Err))
-		} else {
-			logger.Log.Error(appErr.Title, zap.Int("status", appErr.Status), zap.String("path", requestPath))
+			logFields = append(logFields, zap.Error(appErr.Err))
 		}
+		logger.Log.Error(appErr.Title, logFields...)
 	} else {
-		logger.Log.Error(appErr.Title, zap.Int("status", appErr.Status), zap.String("path", requestPath))
+		logger.Log.Error(appErr.Title, logFields...)
 	}
 
 	// Respond to client (only public info)
 	// If JSON encoding fails, don't attempt to write another body (avoids recursive logging)
 	resp := ErrorResponseStruct{
-		Title:   appErr.Title,
-		Message: appErr.Message,
+		Title:     appErr.Title,
+		Message:   appErr.Message,
+		RequestID: requestID,
 	}
 	if len(appErr.Messages) > 0 {
 		resp.Messages = appErr.Messages

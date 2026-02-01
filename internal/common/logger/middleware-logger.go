@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 	"time"
+	"log"
 
 	// "sync"
 	"go.uber.org/zap"
@@ -102,6 +103,7 @@ func ExtractClientIP(request *http.Request) string {
 	if err != nil {
 		return request.RemoteAddr
 	}
+	log.Println("Client IP....................", host)
 	return host
 }
 	// // Fall back to RemoteAddr
