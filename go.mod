@@ -1,6 +1,6 @@
 module github.com/alibaba0010/postgres-api
 
-go 1.24.0
+go 1.24.1
 
 toolchain go1.24.9
 
@@ -76,10 +76,12 @@ require (
 )
 
 require (
+	github.com/Boostport/address v0.13.0
 	github.com/aws/aws-sdk-go-v2 v1.41.0
 	github.com/aws/aws-sdk-go-v2/config v1.32.6
 	github.com/aws/aws-sdk-go-v2/credentials v1.19.6
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.95.0
+	github.com/codingsince1985/geo-golang v1.8.5
 )
 
 require (

@@ -14,7 +14,6 @@ import (
 	"github.com/alibaba0010/postgres-api/internal/common/types"
 	"github.com/alibaba0010/postgres-api/internal/database"
 	"github.com/alibaba0010/postgres-api/internal/utils"
-	"github.com/go-playground/validator/v10"
 	"go.uber.org/zap"
 )
 
@@ -216,9 +215,8 @@ func GetUserByEmail(ctx context.Context, email string) (*models.User, *errors.Ap
 
 func UpdateUserRoleStatus(ctx context.Context, userID string, input dto.UpdateUserRoleInput) (*dto.UpdateUserResponse, *errors.AppError) {
 	// Validate input
-	validate := validator.New()
-	if err := validate.Struct(input); err != nil {
-		return nil, errors.ValidationError("invalid role: " + string(input.Role))
+	if err := utils.ValidateInput(input); err != nil {
+		return nil, err
 	}
 
 	// Fetch user

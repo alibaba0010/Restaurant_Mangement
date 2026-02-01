@@ -40,7 +40,7 @@ const (
 // Register User Functionality
 func RegisterUser(ctx context.Context, input dto.SignupInput) (*models.User, *errors.AppError) {
 	// Validate input
-	if err := utils.ValidateAndError(input); err != nil {
+	if err := utils.ValidateInput(input); err != nil {
 		return nil, err
 	}
 
@@ -148,24 +148,32 @@ func ActivateUser(ctx context.Context, token string) (*models.User, *errors.AppE
 	return user, nil
 }
 
-func LoginUser(ctx context.Context, email, password string) (*models.User, *TokenPair, *errors.AppError) {
-	in := dto.SigninInput{Email: email, Password: password}
-	if err := utils.ValidateAndError(in); err != nil {
+func LoginUser(ctx context.Context, input dto.SigninInput, ip, ua string) (*models.User, *TokenPair, *errors.AppError) {
+	input.Email = strings.TrimSpace(input.Email)
+	input.Password = strings.TrimSpace(input.Password)
+
+	if err := utils.ValidateInput(input); err != nil {
 		return nil, nil, err
 	}
 
 	// Fetch user by email
-	user, err := repositories.UserRepo.FindByEmail(ctx, email)
+	user, err := repositories.UserRepo.FindByEmail(ctx, input.Email)
 	if err != nil {
 		return nil, nil, errors.NotFoundError("invalid email or password")
 	}
 
 	// Verify password
-	if !verifyPassword(password, user.Password) {
+	if !verifyPassword(input.Password, user.Password) {
 		return nil, nil, errors.NotFoundError("invalid email or password")
 	}
 
-	return user, nil, nil
+	// Generate token pair
+	tokens, appErr := GenerateTokenPair(ctx, user.ID, user.Role, ip, ua)
+	if appErr != nil {
+		return nil, nil, appErr
+	}
+
+	return user, tokens, nil
 }
 
 // OAuthLogin handles the social login logic (find or create user, generate tokens)
@@ -421,13 +429,14 @@ func RefreshTokenWithRotation(ctx context.Context, refreshToken, ip, userAgent s
 // }
 
 // ForgotPassword generates a password reset token and sends it via email
-func ForgotPassword(ctx context.Context, email string) *errors.AppError {
-	if email == "" {
-		return errors.ValidationError("email is required")
+func ForgotPassword(ctx context.Context, input dto.ForgotPasswordInput) *errors.AppError {
+	input.Email = strings.TrimSpace(input.Email)
+	if err := utils.ValidateInput(input); err != nil {
+		return err
 	}
 
 	// Check if user exists
-	user, err := repositories.UserRepo.FindByEmail(ctx, email)
+	user, err := repositories.UserRepo.FindByEmail(ctx, input.Email)
 	if err != nil {
 		return errors.NotFoundError("User not found for Password Reset")
 	}
@@ -472,13 +481,17 @@ func ForgotPassword(ctx context.Context, email string) *errors.AppError {
 }
 
 // ResetPassword validates the reset token and updates the user's password
-func ResetPassword(ctx context.Context, token, newPassword string) *errors.AppError {
-	if token == "" || newPassword == "" {
-		return errors.ValidationError("token and password are required")
+func ResetPassword(ctx context.Context, input dto.ResetPasswordInput) *errors.AppError {
+	input.Token = strings.TrimSpace(input.Token)
+	input.Password = strings.TrimSpace(input.Password)
+	input.ConfirmPassword = strings.TrimSpace(input.ConfirmPassword)
+
+	if err := utils.ValidateInput(input); err != nil {
+		return err
 	}
 
 	// Retrieve token data from Redis
-	key := "reset:" + token
+	key := "reset:" + input.Token
 	data, err := database.RedisClient.Get(ctx, key).Bytes()
 	if err == redisPkg.Nil {
 		return errors.ValidationError("invalid or expired reset token")
@@ -498,7 +511,7 @@ func ResetPassword(ctx context.Context, token, newPassword string) *errors.AppEr
 	}
 
 	// Hash new password
-	hashedPwd, err := hashPassword(newPassword)
+	hashedPwd, err := hashPassword(input.Password)
 	if err != nil {
 		return errors.InternalError(err)
 	}

@@ -3,6 +3,7 @@ package repositories
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/alibaba0010/postgres-api/internal/auth/models"
 	"github.com/alibaba0010/postgres-api/internal/database"
@@ -42,8 +43,12 @@ func (r *UserRepository) ExistsByEmail(ctx context.Context, email string) (bool,
 	return database.DB.NewSelect().Model((*models.User)(nil)).Where("email = ?", email).Exists(ctx)
 }
 
-func (r *UserRepository) Update(ctx context.Context, user *models.User, columns ...string) error {
-	q := database.DB.NewUpdate().Model(user).WherePK()
+func (r *UserRepository) Update(ctx context.Context, db bun.IDB, user *models.User, columns ...string) error {
+	if db == nil {
+		db = database.DB
+	}
+	user.UpdatedAt = time.Now()
+	q := db.NewUpdate().Model(user).WherePK()
 	if len(columns) > 0 {
 		q = q.Column(columns...)
 	}
@@ -81,16 +86,6 @@ func (r *UserRepository) FindAll(ctx context.Context, page, pageSize int, qStr, 
 	}
 
 	return users, int64(total), nil
-}
-
-// UpdateInTx updates a user within an existing transaction
-func (r *UserRepository) UpdateInTx(ctx context.Context, tx bun.Tx, user *models.User, columns ...string) error {
-	q := tx.NewUpdate().Model(user).WherePK()
-	if len(columns) > 0 {
-		q = q.Column(columns...)
-	}
-	_, err := q.Exec(ctx)
-	return err
 }
 
 // UpdatePassword updates a user's password by user ID

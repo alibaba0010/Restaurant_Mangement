@@ -213,11 +213,28 @@ type ListParams struct {
 // ParseListParams extracts common query parameters from the request
 func ParseListParams(r *http.Request) ListParams {
 	q := r.URL.Query()
+
+	limit := ParseInt(q.Get("limit"), 20)
+	if limit <= 0 {
+		limit = 20
+	}
+	if limit > 100 {
+		limit = 100
+	}
+
+	pageSize := ParseInt(q.Get("page_size"), 20)
+	if pageSize <= 0 {
+		pageSize = 20
+	}
+	if pageSize > 100 {
+		pageSize = 100
+	}
+
 	return ListParams{
 		Page:     ParseInt(q.Get("page"), 1),
-		PageSize: ParseInt(q.Get("page_size"), 20),
+		PageSize: pageSize,
 		Cursor:   q.Get("cursor"),
-		Limit:    ParseInt(q.Get("limit"), 20),
+		Limit:    limit,
 		Query:    q.Get("q"),
 		SortBy:   q.Get("sort_by"),
 		Order:    q.Get("order"),

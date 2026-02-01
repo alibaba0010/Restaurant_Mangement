@@ -101,34 +101,17 @@ func SigninHandler(writer http.ResponseWriter, request *http.Request) {
 		return
 	}
 
-	// Trim email
-	input.Email = strings.TrimSpace(input.Email)
-	input.Password = strings.TrimSpace(input.Password)
-
-	// Validate input
-	if err := utils.ValidateAndError(input); err != nil {
-		errors.ErrorResponse(writer, request, err)
-		return
-	}
-
-	// Authenticate user
-	user, _, appErr := services.LoginUser(request.Context(), input.Email, input.Password)
-	if appErr != nil {
-		errors.ErrorResponse(writer, request, appErr)
-		return
-	}
-
 	// Extract client IP and User-Agent
 	ip := utils.ExtractClientIP(request)
 	userAgent := request.Header.Get("User-Agent")
 
-	// Generate token pair
-	tokens, appErr := services.GenerateTokenPair(request.Context(), user.ID, user.Role, ip, userAgent)
+	// Authenticate user and generate tokens
+	user, tokens, appErr := services.LoginUser(request.Context(), input, ip, userAgent)
 	if appErr != nil {
 		errors.ErrorResponse(writer, request, appErr)
 		return
 	}
-	// log tokens
+
 	// set cookies and return response
 	sendAuthResponse(writer, user, tokens, "Signin successful")
 }
@@ -304,15 +287,8 @@ func ForgotPasswordHandler(writer http.ResponseWriter, request *http.Request) {
 		return
 	}
 
-	// Trim and validate email
-	input.Email = strings.TrimSpace(input.Email)
-	if err := utils.ValidateAndError(input); err != nil {
-		errors.ErrorResponse(writer, request, err)
-		return
-	}
-
 	// Call service to send reset email
-	appErr := services.ForgotPassword(request.Context(), input.Email)
+	appErr := services.ForgotPassword(request.Context(), input)
 	if appErr != nil {
 		errors.ErrorResponse(writer, request, appErr)
 		return
@@ -333,19 +309,8 @@ func ResetPasswordHandler(writer http.ResponseWriter, request *http.Request) {
 		return
 	}
 
-	// Trim inputs
-	input.Token = strings.TrimSpace(input.Token)
-	input.Password = strings.TrimSpace(input.Password)
-	input.ConfirmPassword = strings.TrimSpace(input.ConfirmPassword)
-
-	// Validate input
-	if err := utils.ValidateAndError(input); err != nil {
-		errors.ErrorResponse(writer, request, err)
-		return
-	}
-
 	// Call service to reset password
-	appErr := services.ResetPassword(request.Context(), input.Token, input.Password)
+	appErr := services.ResetPassword(request.Context(), input)
 	if appErr != nil {
 		errors.ErrorResponse(writer, request, appErr)
 		return
