@@ -2,11 +2,11 @@ package logger
 
 import (
 	"context"
+	"log"
 	"net"
 	"net/http"
 	"strings"
 	"time"
-	"log"
 
 	// "sync"
 	"go.uber.org/zap"

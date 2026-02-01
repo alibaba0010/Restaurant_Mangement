@@ -8,6 +8,7 @@ import (
 	"github.com/alibaba0010/postgres-api/internal/database"
 	"github.com/alibaba0010/postgres-api/internal/restaurants/models"
 	"github.com/alibaba0010/postgres-api/internal/utils"
+	"github.com/uptrace/bun"
 )
 
 type RestaurantRepository struct{}
@@ -29,6 +30,14 @@ func (r *RestaurantRepository) FindByID(ctx context.Context, id string) (*models
 }
 // FindAll retrieves restaurants with cursor-based pagination
 func (r *RestaurantRepository) FindAll(ctx context.Context, limit int, cursorStr string, qStr string, userID *string, status *string, sortBy, order string) ([]models.Restaurant, string, bool, int64, error) {
+	// 1. Sanitize Limit
+	if limit <= 0 {
+		limit = 20
+	}
+	if limit > 100 {
+		limit = 100
+	}
+
 	restaurants := make([]models.Restaurant, 0)
 	sel := database.DB.NewSelect().Model(&restaurants)
 
@@ -45,8 +54,10 @@ func (r *RestaurantRepository) FindAll(ctx context.Context, limit int, cursorStr
 		sel = sel.Where("status = ?", *status)
 	}
 
-	// Calculate total count (optional, but good for UI)
-	total, err := sel.Count(ctx)
+	// Calculate total count (optional, but good for UI - kept as requested despite performance concern, consider optimizing later)
+	countSel := sel.Clone()
+	total, err := countSel.Count(ctx)
+
 	if err != nil {
 		return nil, "", false, 0, err
 	}
@@ -59,6 +70,11 @@ func (r *RestaurantRepository) FindAll(ctx context.Context, limit int, cursorStr
 		decoded, err := utils.DecodeCursor(cursorStr)
 		if err != nil {
 			return nil, "", false, 0, err
+		}
+
+		// Validate cursor sort
+		if decoded.Sort != sortBy {
+			return nil, "", false, 0, fmt.Errorf("cursor sort parameter mismatch")
 		}
 
 		// Determine the operator based on sort order
@@ -76,7 +92,7 @@ func (r *RestaurantRepository) FindAll(ctx context.Context, limit int, cursorStr
 		case "rating":
 			cursorVal = utils.GetCursorValueAsFloat(decoded.LastValue)
 		case "capacity":
-			cursorVal = utils.GetCursorValueAsFloat(decoded.LastValue) // using float for number comparison safety
+			cursorVal = utils.GetCursorValueAsInt(decoded.LastValue) // Use correct int type
 		default:
 			cursorVal = utils.GetCursorValueAsString(decoded.LastValue)
 		}
@@ -117,14 +133,21 @@ func (r *RestaurantRepository) FindAll(ctx context.Context, limit int, cursorStr
 		default:
 			lastVal = lastItem.CreatedAt
 		}
-		nextCursor = utils.EncodeCursor(lastVal, lastItem.ID.String())
+		nextCursor = utils.EncodeCursor(lastVal, lastItem.ID.String(), sortBy)
 	}
 
 	return restaurants, nextCursor, hasMore, int64(total), nil
 }
 // Update updates an existing restaurant in the database
-func (r *RestaurantRepository) Update(ctx context.Context, restaurant *models.Restaurant) error {
+func (r *RestaurantRepository) Update(ctx context.Context, db bun.IDB, restaurant *models.Restaurant, columns ...string) error {
+	if db == nil {
+		db = database.DB
+	}
 	restaurant.UpdatedAt = time.Now()
-	_, err := database.DB.NewUpdate().Model(restaurant).WherePK().Exec(ctx)
+	q := db.NewUpdate().Model(restaurant).WherePK()
+	if len(columns) > 0 {
+		q = q.Column(columns...)
+	}
+	_, err := q.Exec(ctx)
 	return err
 }

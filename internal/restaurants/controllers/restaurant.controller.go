@@ -15,20 +15,26 @@ import (
 	"github.com/gorilla/mux"
 )
 
+// RestaurantController holds the restaurant service and provides HTTP handlers
+type RestaurantController struct {
+	service *services.RestaurantService
+}
+
+// NewRestaurantController creates a new restaurant controller with the given service
+func NewRestaurantController(service *services.RestaurantService) *RestaurantController {
+	return &RestaurantController{
+		service: service,
+	}
+}
+
 // CreateRestaurantHandler handles the creation of a new restaurant
-func CreateRestaurantHandler(writer http.ResponseWriter, request *http.Request) {
+func (rc *RestaurantController) CreateRestaurantHandler(writer http.ResponseWriter, request *http.Request) {
 	var input dto.CreateRestaurantInput
 	if err := json.NewDecoder(request.Body).Decode(&input); err != nil {
 		errors.ErrorResponse(writer, request, errors.ValidationError("Invalid request body"))
 		return
 	}
 	
-	// Validate input
-	if err := utils.ValidateAndError(input); err != nil {
-		errors.ErrorResponse(writer, request, err)
-		return
-	}
-
 	// Extract authenticated user from context (set by AuthMiddleware)
 	user := guards.ExtractAuthenticatedUser(request)
 	if user == nil {
@@ -37,7 +43,7 @@ func CreateRestaurantHandler(writer http.ResponseWriter, request *http.Request) 
 	}
 
 	// Pass user info directly to service
-	resp, err := services.CreateRestaurant(request.Context(), input, user)
+	resp, err := rc.service.CreateRestaurant(request.Context(), input, user)
 	if err != nil {
 		errors.ErrorResponse(writer, request, err)
 		return
@@ -50,11 +56,11 @@ func CreateRestaurantHandler(writer http.ResponseWriter, request *http.Request) 
 }
 
 // GetRestaurantHandler retrieves a restaurant by ID
-func GetRestaurantHandler(writer http.ResponseWriter, request *http.Request) {
+func (rc *RestaurantController) GetRestaurantHandler(writer http.ResponseWriter, request *http.Request) {
 	vars := mux.Vars(request)
 	id := vars["id"]
 
-	resp, err := services.GetRestaurantByID(request.Context(), id)
+	resp, err := rc.service.GetByID(request.Context(), id)
 	if err != nil {
 		errors.ErrorResponse(writer, request, err)
 		return
@@ -82,10 +88,9 @@ func GetRestaurantHandler(writer http.ResponseWriter, request *http.Request) {
 }
 
 // ListRestaurantsHandler lists restaurants with pagination
-func ListRestaurantsHandler(writer http.ResponseWriter, request *http.Request) {
+func (rc *RestaurantController) ListRestaurantsHandler(writer http.ResponseWriter, request *http.Request) {
 	params := utils.ParseListParams(request)
 
-	// Filter logic based on user role
 	// Filter logic based on user role
 	var filterUserID *string
 	var filterStatus *string
@@ -119,7 +124,7 @@ func ListRestaurantsHandler(writer http.ResponseWriter, request *http.Request) {
 		filterStatus = &activeStatus
 	}
 
-	data, nextCursor, hasMore, total, err := services.GetAllRestaurants(request.Context(), params.Limit, params.Cursor, params.Query, filterUserID, filterStatus, params.SortBy, params.Order)
+	data, nextCursor, hasMore, total, err := rc.service.GetAll(request.Context(), params.Limit, params.Cursor, params.Query, filterUserID, filterStatus, params.SortBy, params.Order)
 	if err != nil {
 		errors.ErrorResponse(writer, request, err)
 		return
@@ -137,7 +142,7 @@ func ListRestaurantsHandler(writer http.ResponseWriter, request *http.Request) {
 }
 
 // UpdateRestaurantHandler handles updating a restaurant
-func UpdateRestaurantHandler(writer http.ResponseWriter, request *http.Request) {
+func (rc *RestaurantController) UpdateRestaurantHandler(writer http.ResponseWriter, request *http.Request) {
 	vars := mux.Vars(request)
 	id := vars["id"]
 
@@ -148,7 +153,7 @@ func UpdateRestaurantHandler(writer http.ResponseWriter, request *http.Request) 
 	}
 
 	// Validate input
-	if err := utils.ValidateAndError(input); err != nil {
+	if err := utils.ValidateInput(input); err != nil {
 		errors.ErrorResponse(writer, request, err)
 		return
 	}
@@ -160,7 +165,7 @@ func UpdateRestaurantHandler(writer http.ResponseWriter, request *http.Request) 
 	}
 
 	// Fetch existing restaurant to check ownership
-	existing, err := services.GetRestaurantByID(request.Context(), id)
+	existing, err := rc.service.GetByID(request.Context(), id)
 	if err != nil {
 		errors.ErrorResponse(writer, request, err)
 		return
@@ -188,7 +193,7 @@ func UpdateRestaurantHandler(writer http.ResponseWriter, request *http.Request) 
 		return
 	}
 
-	resp, err := services.UpdateRestaurant(request.Context(), id, input)
+	resp, err := rc.service.Update(request.Context(), id, input)
 	if err != nil {
 		errors.ErrorResponse(writer, request, err)
 		return

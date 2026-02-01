@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/alibaba0010/postgres-api/internal/common/dto"
 	"github.com/alibaba0010/postgres-api/internal/common/errors"
 	"github.com/alibaba0010/postgres-api/internal/common/logger"
 	"github.com/alibaba0010/postgres-api/internal/utils"
@@ -97,6 +98,34 @@ type TokenBucket struct {
 	mu             sync.Mutex
 }
 
+
+
+// LastSeen returns the last refill/request time
+func (tb *TokenBucket) LastSeen() time.Time {
+	tb.mu.Lock()
+	defer tb.mu.Unlock()
+	return tb.lastRefillTime
+}
+
+// Allow tries to take a token and returns true if allowed
+func (tb *TokenBucket) Allow(now time.Time) bool {
+	tb.mu.Lock()
+	defer tb.mu.Unlock()
+
+	elapsed := now.Sub(tb.lastRefillTime).Seconds()
+	tb.tokens += elapsed * tb.rate
+	if tb.tokens > tb.burst {
+		tb.tokens = tb.burst
+	}
+	tb.lastRefillTime = now
+
+	if tb.tokens >= 1 {
+		tb.tokens--
+		return true
+	}
+	return false
+}
+
 // NewTokenBucket creates a new token bucket that refills `rate` tokens per second up to `burst` capacity.
 func NewTokenBucket(rate int, burst int) *TokenBucket {
 	if rate <= 0 {
@@ -112,71 +141,74 @@ func NewTokenBucket(rate int, burst int) *TokenBucket {
 		lastRefillTime: time.Now(),
 	}
 }
-
-// Allow tries to take a token and returns true if allowed
-func (tb *TokenBucket) Allow() bool {
-	tb.mu.Lock()
-	defer tb.mu.Unlock()
-
-	now := time.Now()
-	elapsed := now.Sub(tb.lastRefillTime).Seconds()
-	tb.tokens += elapsed * tb.rate
-	if tb.tokens > tb.burst {
-		tb.tokens = tb.burst
-	}
-	tb.lastRefillTime = now
-
-	if tb.tokens >= 1 {
-		tb.tokens--
-		return true
-	}
-	return false
-}
-
 // RateLimit returns a middleware that enforces a per-IP token-bucket rate limit.
-// rate = tokens added per second, burst = maximum burst capacity.
+// rate = tokens added per second, burst = maximum bucket capacity.
 func RateLimit(rate int, burst int) func(http.Handler) http.Handler {
 	type userBucket struct {
-		tb       *TokenBucket
-		lastSeen time.Time
+		tb *TokenBucket
 	}
 
 	var (
-		mu      sync.Mutex
+		mu      sync.RWMutex
 		buckets = make(map[string]*userBucket)
 	)
 
-	// Clean up old buckets every minute to prevent memory leak
+	// Clean up old buckets after every 5 minute to prevent memory leak
 	go func() {
 		ticker := time.NewTicker(time.Minute)
 		defer ticker.Stop()
 		for range ticker.C {
-			mu.Lock()
+			// Phase 1: Identify buckets to delete using RLock
+			var toDelete []string
+			mu.RLock()
 			for ip, ub := range buckets {
-				if time.Since(ub.lastSeen) > 5*time.Minute {
-					delete(buckets, ip)
+				if time.Since(ub.tb.LastSeen()) > 5*time.Minute {
+					toDelete = append(toDelete, ip)
 				}
 			}
-			mu.Unlock()
+			mu.RUnlock()
+
+			// Phase 2: Delete identified buckets using Lock
+			if len(toDelete) > 0 {
+				mu.Lock()
+				for _, ip := range toDelete {
+					// Double check under write lock
+					if ub, exists := buckets[ip]; exists {
+						if time.Since(ub.tb.LastSeen()) > 5*time.Minute {
+							delete(buckets, ip)
+						}
+					}
+				}
+				mu.Unlock()
+			}
 		}
 	}()
 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			now := time.Now()
 			ip := utils.ExtractClientIP(r)
 
-			mu.Lock()
+			// Try to get existing bucket with read lock
+			mu.RLock()
 			ub, exists := buckets[ip]
-			if !exists {
-				ub = &userBucket{
-					tb: NewTokenBucket(rate, burst),
-				}
-				buckets[ip] = ub
-			}
-			ub.lastSeen = time.Now()
-			mu.Unlock()
+			mu.RUnlock()
 
-			if !ub.tb.Allow() {
+			if !exists {
+				// Create new bucket with write lock
+				mu.Lock()
+				// Double check after acquiring write lock
+				ub, exists = buckets[ip]
+				if !exists {
+					ub = &userBucket{
+						tb: NewTokenBucket(rate, burst),
+					}
+					buckets[ip] = ub
+				}
+				mu.Unlock()
+			}
+
+			if !ub.tb.Allow(now) {
 				logger.Log.Warn("rate limit exceeded",
 					zap.String("ip", ip),
 					zap.String("path", r.URL.Path),
@@ -185,9 +217,9 @@ func RateLimit(rate int, burst int) func(http.Handler) http.Handler {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusTooManyRequests)
 				appErr := errors.RateLimitError()
-				_ = json.NewEncoder(w).Encode(map[string]interface{}{
-					"title":   appErr.Title,
-					"message": appErr.Message,
+				utils.WriteJSON(w, http.StatusTooManyRequests, dto.MessageResponse{
+					Title:   appErr.Title,
+					Message: appErr.Message,
 				})
 				return
 			}

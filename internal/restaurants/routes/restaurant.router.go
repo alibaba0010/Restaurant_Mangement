@@ -1,8 +1,6 @@
 package routes
 
 import (
-	"net/http"
-
 	"github.com/alibaba0010/postgres-api/internal/common/address"
 	"github.com/alibaba0010/postgres-api/internal/common/guards"
 	"github.com/alibaba0010/postgres-api/internal/common/types"
@@ -18,17 +16,19 @@ func RestaurantRoutes(route *mux.Router) {
 	restaurantService := services.NewRestaurantService(addressService)
 	restaurantController := controllers.NewRestaurantController(restaurantService)
 
-	// Restaurants endpoint
+	// Protected Restaurant Routes
 	restaurants := route.PathPrefix("/restaurants").Subrouter()
-	managementRole := types.RoleManagement.String()
+	restaurants.Use(guards.AuthMiddleware)
 
-	// Routes accessible to all authenticated users
-	restaurants.Handle("", guards.AuthMiddleware(http.HandlerFunc(restaurantController.ListRestaurantsHandler))).Methods("GET")
-	restaurants.Handle("/{id}", guards.AuthMiddleware(http.HandlerFunc(restaurantController.GetRestaurantHandler))).Methods("GET")
-	// Update Restaurant (PUT/PATCH /restaurants/{id})
-	restaurants.Handle("/{id}", guards.AuthMiddleware(http.HandlerFunc(restaurantController.UpdateRestaurantHandler))).Methods("PUT", "PATCH")
+	// General restaurant operations (Authenticated)
+	restaurants.HandleFunc("", restaurantController.ListRestaurantsHandler).Methods("GET")
+	restaurants.HandleFunc("/{id}", restaurantController.GetRestaurantHandler).Methods("GET")
+	restaurants.HandleFunc("/{id}", restaurantController.UpdateRestaurantHandler).Methods("PUT", "PATCH")
 
-	// Protected Routes
-	// Create Restaurant managed by management role
-	restaurants.Handle("", guards.AuthMiddleware(guards.RequireRole(managementRole)(http.HandlerFunc(restaurantController.CreateRestaurantHandler)))).Methods("POST")
+	// Management strictly restricted operations
+	managementOnly := restaurants.PathPrefix("").Subrouter()
+	managementOnly.Use(guards.RequireRole(types.RoleManagement.String()))
+
+	// Create Restaurant (POST /restaurants)
+	managementOnly.HandleFunc("", restaurantController.CreateRestaurantHandler).Methods("POST")
 }
