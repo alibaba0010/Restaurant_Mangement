@@ -9,30 +9,32 @@ import (
 	"github.com/alibaba0010/postgres-api/internal/common/errors"
 	"github.com/alibaba0010/postgres-api/internal/common/guards"
 	"github.com/alibaba0010/postgres-api/internal/common/logger"
-	"github.com/alibaba0010/postgres-api/internal/database"
 	"github.com/alibaba0010/postgres-api/internal/restaurants/dto"
 	"github.com/alibaba0010/postgres-api/internal/restaurants/models"
 	"github.com/alibaba0010/postgres-api/internal/restaurants/repositories"
 	"github.com/alibaba0010/postgres-api/internal/utils"
 
 	"github.com/google/uuid"
+	"github.com/uptrace/bun"
 	"go.uber.org/zap"
 )
 
 // RestaurantService provides business logic for restaurant operations
 type RestaurantService struct {
-	repo             repositories.RestaurantRepository
+	repo             *repositories.RestaurantRepository
 	addressService   address.AddressService
+	db               *bun.DB // For transactions
 }
 
 // NewRestaurantService creates and returns a new restaurant service instance
-func NewRestaurantService(addressSvc address.AddressService) *RestaurantService {
+func NewRestaurantService(repo *repositories.RestaurantRepository, addressSvc address.AddressService, db *bun.DB) *RestaurantService {
 	if addressSvc == nil {
 		addressSvc = address.NewService()
 	}
 	return &RestaurantService{
-		repo:           *repositories.RestaurantRepo,
+		repo:           repo,
 		addressService: addressSvc,
+		db:             db,
 	}
 }
 
@@ -132,7 +134,7 @@ func (s *RestaurantService) CreateRestaurant(ctx context.Context, input dto.Crea
 		restaurant.TakeawayAvailable = *input.TakeawayAvailable
 	}
 
-	err = repositories.RestaurantRepo.Create(ctx, restaurant)
+	err = s.repo.Create(ctx, restaurant)
 	if err != nil {
 		logger.Log.Error("failed to create restaurant", zap.Error(err))
 		return nil, errors.InternalError(err)
@@ -143,7 +145,7 @@ func (s *RestaurantService) CreateRestaurant(ctx context.Context, input dto.Crea
 
 // GetByID retrieves a restaurant by ID
 func (s *RestaurantService) GetByID(ctx context.Context, id string) (*dto.RestaurantResponse, *errors.AppError) {
-	restaurant, err := repositories.RestaurantRepo.FindByID(ctx, id)
+	restaurant, err := s.repo.FindByID(ctx, id)
 	if err != nil {
 		return nil, errors.NotFoundError("restaurant not found")
 	}
@@ -157,7 +159,7 @@ func (s *RestaurantService) GetAll(ctx context.Context, limit int, cursor string
 		limit = 20
 	}
 
-	restaurants, nextCursor, hasMore, total, err := repositories.RestaurantRepo.FindAll(ctx, limit, cursor, qStr, userID, status, sortBy, order)
+	restaurants, nextCursor, hasMore, total, err := s.repo.FindAll(ctx, limit, cursor, qStr, userID, status, sortBy, order)
 	if err != nil {
 		return nil, "", false, 0, errors.InternalError(err)
 	}
@@ -181,13 +183,13 @@ func (s *RestaurantService) Update(ctx context.Context, id string, input dto.Upd
 	}
 
 	// Fetch current restaurant to validate existence
-	restaurant, err := repositories.RestaurantRepo.FindByID(ctx, id)
+	restaurant, err := s.repo.FindByID(ctx, id)
 	if err != nil {
 		return nil, errors.NotFoundError("restaurant not found")
 	}
 
 	// Start transaction for data consistency
-	tx, err := database.DB.BeginTx(ctx, nil)
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		logger.Log.Error("failed to begin transaction", zap.Error(err))
 		return nil, errors.TransactionError("starting", err)
@@ -217,7 +219,7 @@ func (s *RestaurantService) Update(ctx context.Context, id string, input dto.Upd
 	fieldsToUpdate = append(fieldsToUpdate, "updated_at")
 
 	// Execute update within transaction
-	err = repositories.RestaurantRepo.Update(ctx, tx, restaurant, fieldsToUpdate...)
+	err = s.repo.Update(ctx, tx, restaurant, fieldsToUpdate...)
 	if err != nil {
 		logger.Log.Error("failed to update restaurant", zap.Error(err), zap.String("restaurant_id", id))
 		return nil, errors.TransactionError("updating restaurant", err)

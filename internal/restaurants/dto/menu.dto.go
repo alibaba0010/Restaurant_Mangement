@@ -14,6 +14,8 @@ type CreateMenuInput struct {
 	ImageURLs       []string `json:"image_urls" validate:"omitempty,dive,url"`
 	VideoURL        string   `json:"video_url" validate:"omitempty,url"`
 	RestaurantID    string   `json:"restaurant_id" validate:"required,uuid"`
+	CategoryID      string   `json:"category_id" validate:"omitempty,uuid"`
+	Tags            []string `json:"tags" validate:"omitempty,dive,min=1"`
 	IsAvailable     bool     `json:"is_available"`
 	PrepTimeMinutes int      `json:"prep_time_minutes" validate:"omitempty,min=0"`
 	Calories        int      `json:"calories" validate:"omitempty,min=0"`
@@ -26,6 +28,8 @@ type UpdateMenuInput struct {
 	Price           *float64 `json:"price" validate:"omitempty,gt=0"`
 	ImageURLs       []string `json:"image_urls" validate:"omitempty,dive,url"`
 	VideoURL        *string  `json:"video_url" validate:"omitempty,url"`
+	CategoryID      *string  `json:"category_id" validate:"omitempty,uuid"`
+	Tags            []string `json:"tags" validate:"omitempty,dive,min=1"`
 	IsAvailable     *bool    `json:"is_available"`
 	PrepTimeMinutes *int     `json:"prep_time_minutes" validate:"omitempty,min=0"`
 	Calories        *int     `json:"calories" validate:"omitempty,min=0"`
@@ -40,6 +44,8 @@ type MenuResponse struct {
 	ImageURLs       []string `json:"image_urls"`
 	VideoURL        string   `json:"video_url,omitempty"`
 	RestaurantID    string   `json:"restaurant_id"`
+	CategoryID      string   `json:"category_id,omitempty"`
+	Tags            []string `json:"tags,omitempty"`
 	IsAvailable     bool     `json:"is_available"`
 	PrepTimeMinutes int      `json:"prep_time_minutes,omitempty"`
 	Calories        int      `json:"calories,omitempty"`

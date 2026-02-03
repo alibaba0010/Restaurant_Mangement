@@ -4,16 +4,21 @@ import (
 	"github.com/alibaba0010/postgres-api/internal/common/address"
 	"github.com/alibaba0010/postgres-api/internal/common/guards"
 	"github.com/alibaba0010/postgres-api/internal/common/types"
+	"github.com/alibaba0010/postgres-api/internal/database"
 	"github.com/alibaba0010/postgres-api/internal/restaurants/controllers"
+	"github.com/alibaba0010/postgres-api/internal/restaurants/repositories"
 	"github.com/alibaba0010/postgres-api/internal/restaurants/services"
 	"github.com/gorilla/mux"
 )
 
 // RestaurantRoutes registers restaurant-related handlers
 func RestaurantRoutes(route *mux.Router) {	
+	// Initialize repositories
+	restaurantRepo := repositories.NewRestaurantRepository(database.DB)
+
 	// Initialize service and controller
 	addressService := address.NewService()
-	restaurantService := services.NewRestaurantService(addressService)
+	restaurantService := services.NewRestaurantService(restaurantRepo, addressService, database.DB)
 	restaurantController := controllers.NewRestaurantController(restaurantService)
 
 	// Protected Restaurant Routes
