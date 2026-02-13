@@ -9,6 +9,7 @@ import (
 	"github.com/alibaba0010/postgres-api/internal/common/errors"
 	"github.com/alibaba0010/postgres-api/internal/common/guards"
 	"github.com/alibaba0010/postgres-api/internal/common/logger"
+	"github.com/alibaba0010/postgres-api/internal/common/types"
 	"github.com/alibaba0010/postgres-api/internal/restaurants/dto"
 	"github.com/alibaba0010/postgres-api/internal/restaurants/models"
 	"github.com/alibaba0010/postgres-api/internal/restaurants/repositories"
@@ -26,6 +27,13 @@ type RestaurantService struct {
 	db               *bun.DB // For transactions
 }
 
+type RestaurantServiceInterface interface {
+	CreateRestaurant(ctx context.Context, input dto.CreateRestaurantInput, user *guards.AuthenticatedUser) (*dto.RestaurantResponse, *errors.AppError)
+	GetRestaurantByID(ctx context.Context, id string) (*dto.RestaurantResponse, *errors.AppError)
+	GetAllRestaurants(ctx context.Context, limit int, cursor string, qStr string, userID *string, status *string, sortBy, order string) ([]dto.RestaurantResponse, string, bool, int64, *errors.AppError)
+	UpdateRestaurant(ctx context.Context, id string, input dto.UpdateRestaurantInput) (*dto.RestaurantResponse, *errors.AppError)
+	DeleteRestaurant(ctx context.Context, id string, user *guards.AuthenticatedUser) (*dto.RestaurantResponse, *errors.AppError)
+}
 // NewRestaurantService creates and returns a new restaurant service instance
 func NewRestaurantService(repo *repositories.RestaurantRepository, addressSvc address.AddressService, db *bun.DB) *RestaurantService {
 	if addressSvc == nil {
@@ -144,7 +152,7 @@ func (s *RestaurantService) CreateRestaurant(ctx context.Context, input dto.Crea
 }
 
 // GetByID retrieves a restaurant by ID
-func (s *RestaurantService) GetByID(ctx context.Context, id string) (*dto.RestaurantResponse, *errors.AppError) {
+func (s *RestaurantService) GetRestaurantByID(ctx context.Context, id string) (*dto.RestaurantResponse, *errors.AppError) {
 	restaurant, err := s.repo.FindByID(ctx, id)
 	if err != nil {
 		return nil, errors.NotFoundError("restaurant not found")
@@ -154,7 +162,7 @@ func (s *RestaurantService) GetByID(ctx context.Context, id string) (*dto.Restau
 }
 
 // GetAll retrieves a paginated list of restaurants
-func (s *RestaurantService) GetAll(ctx context.Context, limit int, cursor string, qStr string, userID *string, status *string, sortBy, order string) ([]dto.RestaurantResponse, string, bool, int64, *errors.AppError) {
+func (s *RestaurantService) GetAllRestaurants(ctx context.Context, limit int, cursor string, qStr string, userID *string, status *string, sortBy, order string) ([]dto.RestaurantResponse, string, bool, int64, *errors.AppError) {
 	if limit <= 0 || limit > 100 {
 		limit = 20
 	}
@@ -176,7 +184,7 @@ func (s *RestaurantService) GetAll(ctx context.Context, limit int, cursor string
 
 
 // Update updates an existing restaurant
-func (s *RestaurantService) Update(ctx context.Context, id string, input dto.UpdateRestaurantInput) (*dto.RestaurantResponse, *errors.AppError) {
+func (s *RestaurantService) UpdateRestaurant(ctx context.Context, id string, input dto.UpdateRestaurantInput) (*dto.RestaurantResponse, *errors.AppError) {
 	// Validate input
 	if err := utils.ValidateInput(input); err != nil {
 		return nil, err
@@ -236,6 +244,56 @@ func (s *RestaurantService) Update(ctx context.Context, id string, input dto.Upd
 	return s.MapToResponse(restaurant), nil
 }
 
+// DeleteRestaurant deletes a restaurant by ID
+func (s *RestaurantService) DeleteRestaurant(ctx context.Context, id string, user *guards.AuthenticatedUser) (*dto.RestaurantResponse, *errors.AppError) {
+	// Fetch restaurant first to check existence and ownership
+	restaurant, err := s.repo.FindByID(ctx, id)
+	if err != nil {
+		return nil, errors.NotFoundError("restaurant not found")
+	}
+
+	// Authorization Check
+	if user.Role != types.RoleAdmin {
+		if user.Role == types.RoleManagement {
+			if restaurant.UserID == nil || restaurant.UserID.String() != user.UserID {
+				return nil, errors.ForbiddenError("You do not have permission to delete this restaurant")
+			}
+		} else {
+			return nil, errors.ForbiddenError("You do not have permission to perform this action")
+		}
+	}
+
+	// Start transaction
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		logger.Log.Error("failed to begin transaction", zap.Error(err))
+		return nil, errors.TransactionError("starting", err)
+	}
+
+	// Defer rollback
+	defer func() {
+		if err := tx.Rollback(); err != nil && err.Error() != "tx: already committed or rolled back" {
+			logger.Log.Error("failed to rollback transaction", zap.Error(err))
+		}
+	}()
+
+	// Perform Delete
+	if err := s.repo.Delete(ctx, tx, id); err != nil {
+		logger.Log.Error("failed to delete restaurant", zap.Error(err), zap.String("restaurant_id", id))
+		return nil, errors.InternalError(err)
+	}
+
+	// Commit transaction
+	if err := tx.Commit(); err != nil {
+		logger.Log.Error("failed to commit transaction", zap.Error(err))
+		return nil, errors.TransactionError("committing restaurant deletion", err)
+	}
+
+	logger.Log.Info("restaurant deleted successfully", zap.String("restaurant_id", id), zap.String("user_id", user.UserID))
+
+	return s.MapToResponse(restaurant), nil
+}
+	
 
 // applyRestaurantUpdates applies field updates from input to restaurant model
 // Returns the list of fields that were actually updated

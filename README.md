@@ -4,24 +4,25 @@ A robust REST API built with Go, featuring PostgreSQL integration, structured lo
 
 ## 🚀 Features
 
-- **PostgreSQL Integration**: Efficient database operations using `pgx` driver
+- **PostgreSQL Integration**: Efficient database operations using `pgx` driver and `Bun` ORM
 - **Structured Logging**: Implemented using `zap` logger
 - **API Documentation**: Swagger/OpenAPI integration
-- **Environment Configuration**: Using `viper` for flexible configuration management
+- **Environment Configuration**: Flexible configuration management
 - **Router**: Using `gorilla/mux` for HTTP routing
 - **Error Handling**: Centralized error handling system
-- **Middleware Support**: Authentication and logging middleware
+- **Middleware Support**: Authentication, Rate Limiting, and CORS
 - **High-Performance Pagination**: Cursor-based pagination for scalable data retrieval.
 - **Redis Integration**: Caching layer for optimized menu listings and token management.
-- **Event-Driven Architecture**: Event streaming support for real-time updates (e.g., MenuUpdated events).
-- **AWS S3 & Multipart Uploads**: Advanced media handling with presigned URLs and multipart support for large video files.
-- **CloudFront Content Delivery**: Optimized serving of menu images and videos.
+- **Event-Driven Architecture**: Redpanda-based event streaming for reactive updates (e.g., Order Status updates on Payment).
+- **Payment Processing**: Integrated Monnify, Paystack, and Flutterwave with secure webhook verification and unified API.
+- **AWS S3 & CloudFront**: Advanced media handling with presigned URLs and CDNs for high-performance content delivery.
 
 ## 📋 Prerequisites
 
 - Go 1.24 or higher
 - PostgreSQL
-- Redis (optional)
+- Redis
+- Redpanda (Kafka-compatible)
 
 ## 🛠 Installation
 
@@ -42,24 +43,50 @@ go mod download
    Create a `.env` file in the root directory with the following variables:
 
 ```env
-DB_HOST=your_host
-DB_PORT=your_port
-DB_USERNAME=your_username
-DB_PASSWORD=your_password
-DB_NAME=your_database_name
-PORT=your_app_port
+# Server
+PORT=8001
+FRONTEND_URL=http://localhost:3000
+
+# Database
+DB_HOST=localhost
+DB_PORT=5432
+DB_USERNAME=postgres
+DB_PASSWORD=password
+DB_NAME=postgres
+
+# Redis
+REDIS_HOST=localhost
+REDIS_PORT=6379
+
+# Event Bus (Redpanda/Kafka)
+REDPANDA_BROKERS=localhost:9092
 
 # AWS Configuration
 AWS_ACCESS_KEY_ID=your_access_key
 AWS_SECRET_ACCESS_KEY=your_secret_key
-AWS_REGION=your_region
+AWS_REGION=us-east-1
 AWS_BUCKET_NAME=your_bucket_name
-AWS_CLOUDFRONT_DOMAIN=your_cloudfront_domain.cloudfront.net
+AWS_CLOUDFRONT_DOMAIN=your_domain.cloudfront.net
+
+# Payment Providers
+PAYSTACK_SECRET_KEY=sk_test_...
+MONNIFY_API_KEY=MK_...
+MONNIFY_SECRET_KEY=...
+MONNIFY_CONTRACT_CODE=...
+FLUTTERWAVE_SECRET_KEY=mx_...
+FLUTTERWAVE_PUBLIC_KEY=...
+FLUTTERWAVE_HASH=your_webhook_hash
 ```
 
 ## 🏃‍♂️ Running the Application
 
-1. Start the server:
+1. Start the server (with hot-reload):
+
+```bash
+air
+```
+
+Or normally:
 
 ```bash
 go run main.go
@@ -70,17 +97,19 @@ The server will start on the configured port (default: 8080)
 ## 📁 Project Structure
 
 ```
-├── api/
+├── cmd/                # Entry points and migration tools
+├── internal/
+│   ├── auth/           # Authentication module (Users, JWT)
+│   ├── common/         # Shared utilities (Logger, Errors, Events, Middlewares)
 │   ├── config/         # Configuration management
-│   ├── controllers/    # Request handlers
-│   ├── database/       # Database connections (PostgreSQL,
-│   ├── errors/         # Error handling and types
-│   ├── middlewares/    # HTTP middlewares
-│   ├── models/         # Data models
-│   └── routes/         # API routes
-├── docs/              # Swagger documentation
-├── logger/            # Logging configuration
-└── main.go           # Application entry point
+│   ├── database/       # DB Connections (Postgres, Redis)
+│   ├── migration/      # SQL Migrations
+│   ├── orders/         # Order Management & Subscribers
+│   ├── payment/        # Payment Processors & Webhooks
+│   ├── restaurants/    # Restaurant & Menu Management
+│   └── utils/          # Helper functions
+├── docs/               # Swagger documentation
+└── main.go             # Application entry point
 ```
 
 ## 🔄 API Endpoints
@@ -89,7 +118,7 @@ The API documentation is available at `/swagger/index.html` when the server is r
 
 ## 🛡 Middleware
 
-- **Authentication**: Token-based authentication
+- **Authentication**: Token-based authentication and RBAC
 - **Logging**: Request/Response logging
 - **Error Handling**: Centralized error handling
 

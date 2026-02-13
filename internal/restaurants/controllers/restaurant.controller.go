@@ -19,7 +19,13 @@ import (
 type RestaurantController struct {
 	service *services.RestaurantService
 }
-
+type RestaurantControllerInterface interface {
+	CreateRestaurantHandler(writer http.ResponseWriter, request *http.Request)
+	GetRestaurantHandler(writer http.ResponseWriter, request *http.Request)
+	ListRestaurantsHandler(writer http.ResponseWriter, request *http.Request)
+	UpdateRestaurantHandler(writer http.ResponseWriter, request *http.Request)
+	DeleteRestaurantHandler(writer http.ResponseWriter, request *http.Request)
+}
 // NewRestaurantController creates a new restaurant controller with the given service
 func NewRestaurantController(service *services.RestaurantService) *RestaurantController {
 	return &RestaurantController{
@@ -60,7 +66,7 @@ func (rc *RestaurantController) GetRestaurantHandler(writer http.ResponseWriter,
 	vars := mux.Vars(request)
 	id := vars["id"]
 
-	resp, err := rc.service.GetByID(request.Context(), id)
+	resp, err := rc.service.GetRestaurantByID(request.Context(), id)
 	if err != nil {
 		errors.ErrorResponse(writer, request, err)
 		return
@@ -124,7 +130,7 @@ func (rc *RestaurantController) ListRestaurantsHandler(writer http.ResponseWrite
 		filterStatus = &activeStatus
 	}
 
-	data, nextCursor, hasMore, total, err := rc.service.GetAll(request.Context(), params.Limit, params.Cursor, params.Query, filterUserID, filterStatus, params.SortBy, params.Order)
+	data, nextCursor, hasMore, total, err := rc.service.GetAllRestaurants(request.Context(), params.Limit, params.Cursor, params.Query, filterUserID, filterStatus, params.SortBy, params.Order)
 	if err != nil {
 		errors.ErrorResponse(writer, request, err)
 		return
@@ -165,7 +171,7 @@ func (rc *RestaurantController) UpdateRestaurantHandler(writer http.ResponseWrit
 	}
 
 	// Fetch existing restaurant to check ownership
-	existing, err := rc.service.GetByID(request.Context(), id)
+	existing, err := rc.service.GetRestaurantByID(request.Context(), id)
 	if err != nil {
 		errors.ErrorResponse(writer, request, err)
 		return
@@ -193,7 +199,7 @@ func (rc *RestaurantController) UpdateRestaurantHandler(writer http.ResponseWrit
 		return
 	}
 
-	resp, err := rc.service.Update(request.Context(), id, input)
+	resp, err := rc.service.UpdateRestaurant(request.Context(), id, input)
 	if err != nil {
 		errors.ErrorResponse(writer, request, err)
 		return
@@ -201,6 +207,28 @@ func (rc *RestaurantController) UpdateRestaurantHandler(writer http.ResponseWrit
 
 	utils.WriteJSON(writer, http.StatusOK, commondto.SingleDataResponse[*dto.RestaurantResponse]{
 		Title: "Updated Restaurant Successfully",
+		Data:  resp,
+	})
+}
+
+func (rc *RestaurantController) DeleteRestaurantHandler(writer http.ResponseWriter, request *http.Request) {
+	vars := mux.Vars(request)
+	id := vars["id"]
+
+	user := guards.ExtractAuthenticatedUser(request)
+	if user == nil {
+		errors.ErrorResponse(writer, request, errors.UnauthorizedError("User not authenticated"))
+		return
+	}
+
+	resp, err := rc.service.DeleteRestaurant(request.Context(), id, user)
+	if err != nil {
+		errors.ErrorResponse(writer, request, err)
+		return
+	}
+
+	utils.WriteJSON(writer, http.StatusOK, commondto.SingleDataResponse[*dto.RestaurantResponse]{
+		Title: "Deleted Restaurant Successfully",
 		Data:  resp,
 	})
 }

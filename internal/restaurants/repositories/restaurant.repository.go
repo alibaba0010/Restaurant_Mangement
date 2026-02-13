@@ -21,6 +21,13 @@ type RestaurantRepository struct {
 func NewRestaurantRepository(db *bun.DB) *RestaurantRepository {
 	return &RestaurantRepository{db: db}
 }
+type RestaurantRepositoryInterface interface {
+	Create(ctx context.Context, restaurant *models.Restaurant) error
+	FindByID(ctx context.Context, id string) (*models.Restaurant, error)
+	FindAll(ctx context.Context, limit int, cursorStr string, qStr string, userID *string, status *string, sortBy, order string) ([]models.Restaurant, string, bool, int64, error)
+	Update(ctx context.Context, db bun.IDB, restaurant *models.Restaurant, columns ...string) error
+	Delete(ctx context.Context, db bun.IDB, id string) error
+}
 
 // Create inserts a new restaurant into the database
 func (r *RestaurantRepository) Create(ctx context.Context, restaurant *models.Restaurant) error {
@@ -171,5 +178,46 @@ func (r *RestaurantRepository) Update(ctx context.Context, db bun.IDB, restauran
 		logger.Log.Error("failed to update restaurant", zap.String("id", restaurant.ID.String()), zap.Error(err))
 		return err
 	}
+	return nil
+}
+
+// Delete soft-deletes an existing restaurant from the database by setting status to 'deleted'
+func (r *RestaurantRepository) Delete(ctx context.Context, db bun.IDB, id string) error {
+	if db == nil {
+		db = r.db
+	}
+
+	// Perform Soft Delete
+	res, err := db.NewUpdate().
+		Model((*models.Restaurant)(nil)).
+		Set("status = ?", models.RestaurantStatusDeleted).
+		Set("updated_at = ?", time.Now()).
+		Where("id = ?", id).
+		Where("status != ?", models.RestaurantStatusDeleted). // Prevent redundant updates
+		Exec(ctx)
+
+	if err != nil {
+		logger.Log.Error("failed to soft delete restaurant", zap.String("id", id), zap.Error(err))
+		return err
+	}
+
+	rowsAffected, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if rowsAffected == 0 {
+		// Check if the record actually exists to distinguish between "not found" and "already deleted"
+		exists, err := r.db.NewSelect().Model((*models.Restaurant)(nil)).Where("id = ?", id).Exists(ctx)
+		if err != nil {
+			return err
+		}
+		if !exists {
+			return sql.ErrNoRows
+		}
+		// If it exists but rowsAffected is 0, it means it was already deleted. We treat this as success (idempotent).
+		return nil
+	}
+
 	return nil
 }
