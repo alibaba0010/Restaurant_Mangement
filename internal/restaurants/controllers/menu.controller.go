@@ -1,48 +1,45 @@
 package controllers
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
-	"path/filepath"
 	"strings"
 
 	commondto "github.com/alibaba0010/postgres-api/internal/common/dto"
 	"github.com/alibaba0010/postgres-api/internal/common/errors"
 	"github.com/alibaba0010/postgres-api/internal/common/guards"
-	"github.com/alibaba0010/postgres-api/internal/common/types"
 	"github.com/alibaba0010/postgres-api/internal/restaurants/dto"
 	"github.com/alibaba0010/postgres-api/internal/restaurants/services"
 	"github.com/alibaba0010/postgres-api/internal/utils"
 	"github.com/gorilla/mux"
 )
 
-// isValidMediaType checks if the file extension is allowed
-func isValidMediaType(filename string) bool {
-	ext := strings.ToLower(filepath.Ext(filename))
-	validExts := map[string]bool{
-		".jpg": true, ".jpeg": true, ".png": true, ".webp": true, ".gif": true, ".avif": true, ".heic": true,
-		".mp4": true, ".mov": true, ".avi": true, ".webm": true, ".m4v": true, ".mkv": true,
-		// ".jpg": true, ".jpeg": true, ".png": true, ".webp": true,
-		// ".mp4": true, ".mov": true, ".avi": true,
-	}
-	return validExts[ext]
+// MenuController holds the menu service and provides HTTP handlers
+type MenuController struct {
+	service *services.MenuService
 }
 
-// verifyRestaurantOwnership checks if the user owns the restaurant
-func verifyRestaurantOwnership(ctx context.Context, restaurantID string, userID string) *errors.AppError {
-	restaurant, err := services.GetRestaurantByID(ctx, restaurantID)
-	if err != nil {
-		return err
+// NewMenuController creates a new menu controller with the given service
+func NewMenuController(menuService *services.MenuService) *MenuController {
+	return &MenuController{
+		service: menuService,
 	}
-	if restaurant.UserID == nil || *restaurant.UserID != userID {
-		return errors.ForbiddenError("You do not have permission to manage this restaurant's resources")
-	}
-	return nil
+}
+
+type MenuControllerInterface interface {
+	InitiateMultipartUploadHandler(writer http.ResponseWriter, request *http.Request)
+	GetMultipartPartURLHandler(writer http.ResponseWriter, request *http.Request)
+	CompleteMultipartUploadHandler(writer http.ResponseWriter, request *http.Request)
+	GetMenuUploadURLHandler(writer http.ResponseWriter, request *http.Request)
+	UploadMenuMediaHandler(writer http.ResponseWriter, request *http.Request)
+	CreateMenuHandler(writer http.ResponseWriter, request *http.Request)
+	GetMenuMediaHandler(writer http.ResponseWriter, request *http.Request)
+	ListMenuHandler(writer http.ResponseWriter, request *http.Request)
+	DeleteMenuMediaHandler(writer http.ResponseWriter, request *http.Request)
 }
 
 // InitiateMultipartUploadHandler handles the initiation of a multipart upload, returns upload id and key
-func InitiateMultipartUploadHandler(writer http.ResponseWriter, request *http.Request) {
+func (mc *MenuController) InitiateMultipartUploadHandler(writer http.ResponseWriter, request *http.Request) {
 	var input dto.InitiateMultipartUploadInput
 
 	if err := json.NewDecoder(request.Body).Decode(&input); err != nil {
@@ -56,7 +53,7 @@ func InitiateMultipartUploadHandler(writer http.ResponseWriter, request *http.Re
 		return
 	}
 
-	resp, err := services.InitiateMultipartUpload(request.Context(), user.UserID, input.Filename, input.ContentType)
+	resp, err := mc.service.InitiateMultipartUpload(request.Context(), user.UserID, input.Filename, input.ContentType)
 	if err != nil {
 		errors.ErrorResponse(writer, request, errors.InternalError(err))
 		return
@@ -69,7 +66,7 @@ func InitiateMultipartUploadHandler(writer http.ResponseWriter, request *http.Re
 }
 
 // GetMultipartPartURLHandler handles generating a presigned URL for a part
-func GetMultipartPartURLHandler(writer http.ResponseWriter, request *http.Request) {
+func (mc *MenuController) GetMultipartPartURLHandler(writer http.ResponseWriter, request *http.Request) {
 	query := request.URL.Query()
 	key := query.Get("key")
 	uploadID := query.Get("upload_id")
@@ -86,7 +83,7 @@ func GetMultipartPartURLHandler(writer http.ResponseWriter, request *http.Reques
 		return
 	}
 
-	url, err := services.GetPartPresignedURL(request.Context(), key, uploadID, int32(partNumber))
+	url, err := mc.service.GetPartPresignedURL(request.Context(), key, uploadID, int32(partNumber))
 	if err != nil {
 		errors.ErrorResponse(writer, request, errors.InternalError(err))
 		return
@@ -99,14 +96,14 @@ func GetMultipartPartURLHandler(writer http.ResponseWriter, request *http.Reques
 }
 
 // CompleteMultipartUploadHandler handles the completion of a multipart upload
-func CompleteMultipartUploadHandler(writer http.ResponseWriter, request *http.Request) {
+func (mc *MenuController) CompleteMultipartUploadHandler(writer http.ResponseWriter, request *http.Request) {
 	var input dto.CompleteMultipartUploadInput
 	if err := json.NewDecoder(request.Body).Decode(&input); err != nil {
 		errors.ErrorResponse(writer, request, errors.ValidationError("Invalid request body"))
 		return
 	}
 
-	publicURL, err := services.CompleteMultipartUpload(request.Context(), input.Key, input.UploadID, input.Parts)
+	publicURL, err := mc.service.CompleteMultipartUpload(request.Context(), input.Key, input.UploadID, input.Parts)
 	if err != nil {
 		errors.ErrorResponse(writer, request, errors.InternalError(err))
 		return
@@ -119,7 +116,7 @@ func CompleteMultipartUploadHandler(writer http.ResponseWriter, request *http.Re
 }
 
 // GetMenuUploadURLHandler handles the request for a presigned URL for menu media uploads
-func GetMenuUploadURLHandler(writer http.ResponseWriter, request *http.Request) {
+func (mc *MenuController) GetMenuUploadURLHandler(writer http.ResponseWriter, request *http.Request) {
 	filename := request.URL.Query().Get("filename")
 	contentType := request.URL.Query().Get("content_type")
 
@@ -134,15 +131,11 @@ func GetMenuUploadURLHandler(writer http.ResponseWriter, request *http.Request) 
 		return
 	}
 
-	// Basic type validation
-	if !isValidMediaType(filename) {
-		errors.ErrorResponse(writer, request, errors.ValidationError("Invalid file type"))
-		return
-	}
 
-	uploadURL, publicURL, err := services.GetMenuUploadURL(request.Context(), user.UserID, filename, contentType)
-	if err != nil {
-		errors.ErrorResponse(writer, request, errors.InternalError(err))
+
+	uploadURL, publicURL, appErr := mc.service.GetUploadURL(request.Context(), user.UserID, filename, contentType)
+	if appErr != nil {
+		errors.ErrorResponse(writer, request, appErr)
 		return
 	}
 
@@ -155,9 +148,8 @@ func GetMenuUploadURLHandler(writer http.ResponseWriter, request *http.Request) 
 	})
 }
 
-
 // UploadMenuMediaHandler handles direct media upload (Multipart Form)
-func UploadMenuMediaHandler(writer http.ResponseWriter, request *http.Request) {
+func (mc *MenuController) UploadMenuMediaHandler(writer http.ResponseWriter, request *http.Request) {
 	// Parse the multipart form (max 50MB)
 	err := request.ParseMultipartForm(50 << 20)
 	if err != nil {
@@ -172,11 +164,6 @@ func UploadMenuMediaHandler(writer http.ResponseWriter, request *http.Request) {
 	}
 	defer file.Close()
 
-	if !isValidMediaType(header.Filename) {
-		errors.ErrorResponse(writer, request, errors.ValidationError("Invalid file type"))
-		return
-	}
-
 	user := guards.ExtractAuthenticatedUser(request)
 	if user == nil {
 		errors.ErrorResponse(writer, request, errors.UnauthorizedError("Authentication required"))
@@ -186,9 +173,9 @@ func UploadMenuMediaHandler(writer http.ResponseWriter, request *http.Request) {
 	contentType := header.Header.Get("Content-Type")
 	filename := header.Filename
 
-	publicURL, appErr := services.UploadMenuMedia(request.Context(), user.UserID, filename, contentType, file)
+	publicURL, appErr := mc.service.UploadMedia(request.Context(), user.UserID, filename, contentType, file)
 	if appErr != nil {
-		errors.ErrorResponse(writer, request, errors.InternalError(appErr))
+		errors.ErrorResponse(writer, request, appErr)
 		return
 	}
 
@@ -199,7 +186,7 @@ func UploadMenuMediaHandler(writer http.ResponseWriter, request *http.Request) {
 }
 
 // CreateMenuHandler handles the creation of a menu item
-func CreateMenuHandler(writer http.ResponseWriter, request *http.Request) {
+func (mc *MenuController) CreateMenuHandler(writer http.ResponseWriter, request *http.Request) {
 	var input dto.CreateMenuInput
 	if err := json.NewDecoder(request.Body).Decode(&input); err != nil {
 		errors.ErrorResponse(writer, request, errors.ValidationError("Invalid request body"))
@@ -207,7 +194,7 @@ func CreateMenuHandler(writer http.ResponseWriter, request *http.Request) {
 	}
 
 	// Validate input
-	if err := utils.ValidateAndError(input); err != nil {
+	if err := utils.ValidateInput(input); err != nil {
 		errors.ErrorResponse(writer, request, err)
 		return
 	}
@@ -218,15 +205,7 @@ func CreateMenuHandler(writer http.ResponseWriter, request *http.Request) {
 		return
 	}
 
-	// Permission logic: Managers can only add to their own restaurants
-	if user.Role == types.RoleManagement {
-		if err := verifyRestaurantOwnership(request.Context(), input.RestaurantID, user.UserID); err != nil {
-			errors.ErrorResponse(writer, request, err)
-			return
-		}
-	}
-
-	menu, appErr := services.CreateMenu(request.Context(), input)
+	menu, appErr := mc.service.Create(request.Context(), input, user.UserID, user.Role)
 	if appErr != nil {
 		errors.ErrorResponse(writer, request, appErr)
 		return
@@ -239,11 +218,11 @@ func CreateMenuHandler(writer http.ResponseWriter, request *http.Request) {
 }
 
 // GetMenuHandler handles retrieving a single menu item
-func GetMenuHandler(writer http.ResponseWriter, request *http.Request) {
+func (mc *MenuController) GetMenuHandler(writer http.ResponseWriter, request *http.Request) {
 	vars := mux.Vars(request)
 	id := vars["id"]
 
-	menu, appErr := services.GetMenuByID(request.Context(), id)
+	menu, appErr := mc.service.GetByID(request.Context(), id)
 	if appErr != nil {
 		errors.ErrorResponse(writer, request, appErr)
 		return
@@ -251,15 +230,21 @@ func GetMenuHandler(writer http.ResponseWriter, request *http.Request) {
 
 	utils.WriteJSON(writer, http.StatusOK, dto.GetMenuByIDResponse{
 		Title:    "Menu details",
-		Response: *services.MapMenuToResponse(menu),
+		Response: *mc.service.MapToResponse(menu),
 	})
 }
 
 // ListMenusHandler handles listing and filtering menu items
-func ListMenusHandler(writer http.ResponseWriter, request *http.Request) {
+func (mc *MenuController) ListMenusHandler(writer http.ResponseWriter, request *http.Request) {
 	params := utils.ParseListParams(request)
 	query := request.URL.Query()
 	restaurantID := query.Get("restaurant_id")
+	categoryID := query.Get("category_id")
+	tagsStr := query.Get("tags")
+	var tags []string
+	if tagsStr != "" {
+		tags = strings.Split(tagsStr, ",")
+	}
 
 	var minPrice, maxPrice *float64
 	if mp := query.Get("min_price"); mp != "" {
@@ -277,7 +262,7 @@ func ListMenusHandler(writer http.ResponseWriter, request *http.Request) {
 		isAvailable = &b
 	}
 
-	menus, nextCursor, hasMore, total, appErr := services.ListMenus(request.Context(), params.Limit, params.Cursor, params.Query, restaurantID, minPrice, maxPrice, isAvailable, params.SortBy, params.Order)
+	menus, nextCursor, hasMore, total, appErr := mc.service.ListMenus(request.Context(), params.Limit, params.Cursor, params.Query, restaurantID, categoryID, tags, minPrice, maxPrice, isAvailable, params.SortBy, params.Order)
 	if appErr != nil {
 		errors.ErrorResponse(writer, request, appErr)
 		return
@@ -294,7 +279,7 @@ func ListMenusHandler(writer http.ResponseWriter, request *http.Request) {
 }
 
 // UpdateMenuHandler handles updating an existing menu item
-func UpdateMenuHandler(writer http.ResponseWriter, request *http.Request) {
+func (mc *MenuController) UpdateMenuHandler(writer http.ResponseWriter, request *http.Request) {
 	vars := mux.Vars(request)
 	id := vars["id"]
 
@@ -305,7 +290,7 @@ func UpdateMenuHandler(writer http.ResponseWriter, request *http.Request) {
 	}
 
 	// Validate input
-	if err := utils.ValidateAndError(input); err != nil {
+	if err := utils.ValidateInput(input); err != nil {
 		errors.ErrorResponse(writer, request, err)
 		return
 	}
@@ -316,22 +301,7 @@ func UpdateMenuHandler(writer http.ResponseWriter, request *http.Request) {
 		return
 	}
 
-	// Fetch existing menu to check ownership
-	menuObj, appErr := services.GetMenuByID(request.Context(), id)
-	if appErr != nil {
-		errors.ErrorResponse(writer, request, appErr)
-		return
-	}
-
-	// Permission logic: Managers can only update their own items
-	if user.Role == types.RoleManagement {
-		if err := verifyRestaurantOwnership(request.Context(), menuObj.RestaurantID.String(), user.UserID); err != nil {
-			errors.ErrorResponse(writer, request, err)
-			return
-		}
-	}
-
-	updatedMenu, appErr := services.UpdateMenu(request.Context(), id, input)
+	updatedMenu, appErr := mc.service.Update(request.Context(), id, input, user.UserID, user.Role)
 	if appErr != nil {
 		errors.ErrorResponse(writer, request, appErr)
 		return

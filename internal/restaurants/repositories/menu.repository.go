@@ -21,7 +21,14 @@ type MenuRepository struct {
 func NewMenuRepository(db *bun.DB) *MenuRepository {
 	return &MenuRepository{db: db}
 }
-
+type MenuRespository interface {
+	Create(ctx context.Context, menu *models.Menu) error
+	FindByID(ctx context.Context, id string) (*models.Menu, error)
+	FindByIDs(ctx context.Context, ids []string) ([]models.Menu, error)
+	FindAll(ctx context.Context, limit int, cursorStr string, queryStr string, restaurantID string, categoryID string, tags []string, minPrice, maxPrice *float64, isAvailable *bool, sortBy, order string) ([]models.Menu, string, bool, int64, error)
+	Update(ctx context.Context, db bun.IDB, menu *models.Menu, columns ...string) error
+	Delete(ctx context.Context, id string) error
+}
 // Create inserts a new menu item into the database
 func (r *MenuRepository) Create(ctx context.Context, menu *models.Menu) error {
 	_, err := r.db.NewInsert().Model(menu).Exec(ctx)

@@ -32,10 +32,6 @@ func MenuRoutes(route *mux.Router) {
 	menuService := services.NewMenuService(menuRepo, restaurantRepo, s3Service)
 	menuController := controllers.NewMenuController(menuService)
 
-	categoryRepo := repositories.NewCategoryRepository(database.DB)
-	categoryService := services.NewCategoryService(categoryRepo)
-	categoryController := controllers.NewCategoryController(categoryService, menuService)
-
 	// --- Menus Endpoint ---
 	menus := route.PathPrefix("/menus").Subrouter()
 
@@ -64,12 +60,6 @@ func MenuRoutes(route *mux.Router) {
 	multipart.HandleFunc("/part-url", menuController.GetMultipartPartURLHandler).Methods("GET")
 	multipart.HandleFunc("/complete", menuController.CompleteMultipartUploadHandler).Methods("POST")
 
-	// --- Categories Endpoint ---
-	categories := route.PathPrefix("/categories").Subrouter()
-	categories.HandleFunc("", categoryController.ListCategoriesHandler).Methods("GET")
 
-	// Categories Create (Management Only)
-	catManagement := categories.PathPrefix("").Subrouter()
-	catManagement.Use(guards.AuthMiddleware, guards.RequireRole(types.RoleManagement.String()))
-	catManagement.HandleFunc("", categoryController.CreateCategoryHandler).Methods("POST")
 }
+	
