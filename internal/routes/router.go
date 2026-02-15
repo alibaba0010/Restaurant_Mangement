@@ -9,7 +9,7 @@ import (
 	"github.com/alibaba0010/postgres-api/internal/common/errors"
 	"github.com/alibaba0010/postgres-api/internal/common/middlewares"
 	orderRoutes "github.com/alibaba0010/postgres-api/internal/orders/routes"
-	paymentRoutes "github.com/alibaba0010/postgres-api/internal/payment/routes"
+	paymentRoutes "github.com/alibaba0010/postgres-api/internal/payments/routes"
 	restaurantRoutes "github.com/alibaba0010/postgres-api/internal/restaurants/routes"
 	"github.com/gorilla/mux"
 	httpSwagger "github.com/swaggo/http-swagger"

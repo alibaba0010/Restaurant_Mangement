@@ -25,6 +25,14 @@ func NewRedpandaProducer(brokers []string) (*RedpandaProducer, error) {
 	return &RedpandaProducer{client: client}, nil
 }
 
+// Ping checks if the Redpanda cluster is reachable
+func (p *RedpandaProducer) Ping(ctx context.Context) error {
+	if err := p.client.Ping(ctx); err != nil {
+		return fmt.Errorf("failed to ping redpanda: %w", err)
+	}
+	return nil
+}
+
 // Publish publishes an event to Redpanda
 func (p *RedpandaProducer) Publish(ctx context.Context, event Event) error {
 	record := &kgo.Record{

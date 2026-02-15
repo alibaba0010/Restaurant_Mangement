@@ -15,7 +15,7 @@ type RedpandaConsumer struct {
 	mu       sync.RWMutex
 }
 
-// NewRedpandaConsumer creates a new RedpandaConsumer
+// NewRedpandaConsumer creates a new RedpandaConsumer using kgo
 func NewRedpandaConsumer(brokers []string, groupID string) (*RedpandaConsumer, error) {
 	client, err := kgo.NewClient(
 		kgo.SeedBrokers(brokers...),
@@ -39,6 +39,14 @@ func (c *RedpandaConsumer) Subscribe(topic string, handler EventHandler) error {
 	c.handlers[topic] = handler
 	c.client.AddConsumeTopics(topic)
 
+	return nil
+}
+
+// Ping checks if the Redpanda cluster is reachable
+func (c *RedpandaConsumer) Ping(ctx context.Context) error {
+	if err := c.client.Ping(ctx); err != nil {
+		return fmt.Errorf("failed to ping redpanda: %w", err)
+	}
 	return nil
 }
 

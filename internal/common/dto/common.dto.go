@@ -3,6 +3,7 @@ package dto
 import (
 	"github.com/alibaba0010/postgres-api/internal/common/types"
 )
+
 // MessageResponse is a common single-message response used across endpoints
 type MessageResponse struct {
 	Title       string `json:"title"`
@@ -18,5 +19,6 @@ type SingleDataResponse[T any] struct {
 // AuthenticatedUser is stored in request context for downstream handlers
 type AuthenticatedUser struct {
 	UserID string
+	Email  string
 	Role   types.UserRole
 }

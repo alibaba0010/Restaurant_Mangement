@@ -31,6 +31,7 @@ func (e BaseEvent) Payload() []byte {
 // Producer defines the interface for publishing events
 type Producer interface {
 	Publish(ctx context.Context, event Event) error
+	Ping(ctx context.Context) error
 	Close()
 }
 
@@ -40,6 +41,7 @@ type EventHandler func(ctx context.Context, event Event) error
 // Consumer defines the interface for consuming events
 type Consumer interface {
 	Subscribe(topic string, handler EventHandler) error
+	Ping(ctx context.Context) error
 	Start(ctx context.Context) error
 	Close()
 }
