@@ -12,13 +12,14 @@ type CursorValue any
 
 // Cursor represents the decoded cursor data
 type Cursor struct {
+	Sort      string      `json:"s"`  // Sort column name, for validation
 	LastValue CursorValue `json:"v"`  // Short key to save space
 	LastID    string      `json:"id"` // Unique tie-breaker
 }
 
 // EncodeCursor generates a base64 encoded cursor string
-func EncodeCursor(lastValue CursorValue, lastID string) string {
-	c := Cursor{LastValue: lastValue, LastID: lastID}
+func EncodeCursor(lastValue CursorValue, lastID string, sort string) string {
+	c := Cursor{LastValue: lastValue, LastID: lastID, Sort: sort}
 	b, err := json.Marshal(c)
 	if err != nil {
 		return ""
@@ -76,6 +77,17 @@ func GetCursorValueAsFloat(val CursorValue) float64 {
 	// int to float
 	if i, ok := val.(int); ok {
 		return float64(i)
+	}
+	return 0
+}
+
+// GetCursorValueAsInt helper handles JSON float64 to int conversion
+func GetCursorValueAsInt(val CursorValue) int {
+	if f, ok := val.(float64); ok {
+		return int(f)
+	}
+	if i, ok := val.(int); ok {
+		return i
 	}
 	return 0
 }

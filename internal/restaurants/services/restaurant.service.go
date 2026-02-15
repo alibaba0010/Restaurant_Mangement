@@ -7,9 +7,9 @@ import (
 
 	"github.com/alibaba0010/postgres-api/internal/common/address"
 	"github.com/alibaba0010/postgres-api/internal/common/errors"
-	"github.com/alibaba0010/postgres-api/internal/common/guards"
 	"github.com/alibaba0010/postgres-api/internal/common/logger"
 	"github.com/alibaba0010/postgres-api/internal/common/types"
+	commonDto "github.com/alibaba0010/postgres-api/internal/common/dto"
 	"github.com/alibaba0010/postgres-api/internal/restaurants/dto"
 	"github.com/alibaba0010/postgres-api/internal/restaurants/models"
 	"github.com/alibaba0010/postgres-api/internal/restaurants/repositories"
@@ -28,11 +28,11 @@ type RestaurantService struct {
 }
 
 type RestaurantServiceInterface interface {
-	CreateRestaurant(ctx context.Context, input dto.CreateRestaurantInput, user *guards.AuthenticatedUser) (*dto.RestaurantResponse, *errors.AppError)
+	CreateRestaurant(ctx context.Context, input dto.CreateRestaurantInput, user *commonDto.AuthenticatedUser) (*dto.RestaurantResponse, *errors.AppError)
 	GetRestaurantByID(ctx context.Context, id string) (*dto.RestaurantResponse, *errors.AppError)
 	GetAllRestaurants(ctx context.Context, limit int, cursor string, qStr string, userID *string, status *string, sortBy, order string) ([]dto.RestaurantResponse, string, bool, int64, *errors.AppError)
 	UpdateRestaurant(ctx context.Context, id string, input dto.UpdateRestaurantInput) (*dto.RestaurantResponse, *errors.AppError)
-	DeleteRestaurant(ctx context.Context, id string, user *guards.AuthenticatedUser) (*dto.RestaurantResponse, *errors.AppError)
+	DeleteRestaurant(ctx context.Context, id string, user *commonDto.AuthenticatedUser) (*dto.RestaurantResponse, *errors.AppError)
 }
 // NewRestaurantService creates and returns a new restaurant service instance
 func NewRestaurantService(repo *repositories.RestaurantRepository, addressSvc address.AddressService, db *bun.DB) *RestaurantService {
@@ -77,7 +77,7 @@ func (s *RestaurantService) MapToResponse(r *models.Restaurant) *dto.RestaurantR
 
 // Create creates a new restaurant
 // user parameter is required and should be passed from the authentication middleware
-func (s *RestaurantService) CreateRestaurant(ctx context.Context, input dto.CreateRestaurantInput, user *guards.AuthenticatedUser) (*dto.RestaurantResponse, *errors.AppError) {
+func (s *RestaurantService) CreateRestaurant(ctx context.Context, input dto.CreateRestaurantInput, user *commonDto.AuthenticatedUser) (*dto.RestaurantResponse, *errors.AppError) {
 	// Validate input
 	if err := utils.ValidateInput(input); err != nil {
 		return nil, err
@@ -245,7 +245,7 @@ func (s *RestaurantService) UpdateRestaurant(ctx context.Context, id string, inp
 }
 
 // DeleteRestaurant deletes a restaurant by ID
-func (s *RestaurantService) DeleteRestaurant(ctx context.Context, id string, user *guards.AuthenticatedUser) (*dto.RestaurantResponse, *errors.AppError) {
+func (s *RestaurantService) DeleteRestaurant(ctx context.Context, id string, user *commonDto.AuthenticatedUser) (*dto.RestaurantResponse, *errors.AppError) {
 	// Fetch restaurant first to check existence and ownership
 	restaurant, err := s.repo.FindByID(ctx, id)
 	if err != nil {

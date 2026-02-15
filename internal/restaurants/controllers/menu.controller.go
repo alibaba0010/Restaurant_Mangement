@@ -205,7 +205,7 @@ func (mc *MenuController) CreateMenuHandler(writer http.ResponseWriter, request 
 		return
 	}
 
-	menu, appErr := mc.service.Create(request.Context(), input, user.UserID, user.Role)
+	menu, appErr := mc.service.CreateMenu(request.Context(), input, *user)
 	if appErr != nil {
 		errors.ErrorResponse(writer, request, appErr)
 		return
@@ -222,7 +222,7 @@ func (mc *MenuController) GetMenuHandler(writer http.ResponseWriter, request *ht
 	vars := mux.Vars(request)
 	id := vars["id"]
 
-	menu, appErr := mc.service.GetByID(request.Context(), id)
+	menu, appErr := mc.service.GetMenuByID(request.Context(), id)
 	if appErr != nil {
 		errors.ErrorResponse(writer, request, appErr)
 		return
@@ -301,7 +301,7 @@ func (mc *MenuController) UpdateMenuHandler(writer http.ResponseWriter, request 
 		return
 	}
 
-	updatedMenu, appErr := mc.service.Update(request.Context(), id, input, user.UserID, user.Role)
+	updatedMenu, appErr := mc.service.UpdateMenu(request.Context(), id, input, *user)
 	if appErr != nil {
 		errors.ErrorResponse(writer, request, appErr)
 		return

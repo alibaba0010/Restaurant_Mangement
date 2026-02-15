@@ -90,8 +90,8 @@ func ValidateStruct(data interface{}) []string {
 	return messages
 }
 
-// ValidateAndError checks the struct and returns a wrapped AppError with all messages if any.
-func ValidateAndError(data interface{}) *errors.AppError {
+// ValidateInput checks the struct and returns a wrapped AppError with all messages if any.
+func ValidateInput(data interface{}) *errors.AppError {
 	msgs := ValidateStruct(data)
 	if len(msgs) > 0 {
 		return errors.ValidationErrors(msgs)

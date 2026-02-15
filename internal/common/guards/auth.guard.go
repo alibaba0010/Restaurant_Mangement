@@ -11,6 +11,7 @@ import (
 	"github.com/alibaba0010/postgres-api/internal/common/errors"
 	"github.com/alibaba0010/postgres-api/internal/common/logger"
 	"github.com/alibaba0010/postgres-api/internal/common/types"
+	"github.com/alibaba0010/postgres-api/internal/common/dto"
 )
 
 // ContextKey is a custom type for context keys to avoid collisions
@@ -21,11 +22,7 @@ const (
 	UserClaimsKey ContextKey = "user_claims"
 )
 
-// AuthenticatedUser is stored in request context for downstream handlers
-type AuthenticatedUser struct {
-	UserID string
-	Role   types.UserRole
-}
+
 
 // AuthMiddleware validates access token from Authorization header or request cookie.
 // On success: stores claims in context (UserClaimsKey)
@@ -71,10 +68,10 @@ func extractToken(request *http.Request) string {
 }
 
 // ExtractAuthenticatedUser extracts user claims from context (set by AuthMiddleware)
-func ExtractAuthenticatedUser(request *http.Request) *AuthenticatedUser {
+func ExtractAuthenticatedUser(request *http.Request) *dto.AuthenticatedUser {
 	if v := request.Context().Value(UserClaimsKey); v != nil {
 		if claims, ok := v.(*services.AccessTokenClaims); ok && claims != nil {
-			return &AuthenticatedUser{UserID: claims.UserID, Role: claims.Role}
+			return &dto.AuthenticatedUser{UserID: claims.UserID, Role: claims.Role}
 		}
 	}
 	return nil

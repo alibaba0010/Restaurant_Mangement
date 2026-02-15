@@ -17,6 +17,7 @@ import (
 	"github.com/alibaba0010/postgres-api/internal/common/logger"
 	"github.com/alibaba0010/postgres-api/internal/common/s3"
 	commontypes "github.com/alibaba0010/postgres-api/internal/common/types"
+	commonDto "github.com/alibaba0010/postgres-api/internal/common/dto"
 	"github.com/alibaba0010/postgres-api/internal/database"
 	"github.com/alibaba0010/postgres-api/internal/restaurants/dto"
 	"github.com/alibaba0010/postgres-api/internal/restaurants/models"
@@ -35,10 +36,6 @@ type MenuService struct {
 	s3Service      *s3.S3Service
 }
 
-type MenuServiceInterface interface{
-	
-}
-
 // NewMenuService creates and returns a new menu service instance
 func NewMenuService(menuRepo *repositories.MenuRepository, restaurantRepo *repositories.RestaurantRepository, s3Service *s3.S3Service) *MenuService {
 	return &MenuService{
@@ -46,6 +43,21 @@ func NewMenuService(menuRepo *repositories.MenuRepository, restaurantRepo *repos
 		restaurantRepo: restaurantRepo,
 		s3Service:      s3Service,
 	}
+}
+type MenuServiceInterface interface {
+	generateKey(s3Service *s3.S3Service, userID, filename, contentType string) string
+	InitiateMultipartUpload(ctx context.Context, userID, filename, contentType string) (*dto.InitiateMultipartUploadResponse, error)
+	GetPartPresignedURL(ctx context.Context, key, uploadID string, partNumber int32) (string, error)
+	CompleteMultipartUpload(ctx context.Context, key, uploadID string, parts []dto.CompletedPart) (string, error)
+	// AbortMultipartUpload
+	GetUploadURL(ctx context.Context, userID string, filename string, contentType string) (string, string, *errors.AppError)
+	UploadMedia(ctx context.Context, userID string, filename string, contentType string, body io.Reader) (string, *errors.AppError)
+	CreateMenu(ctx context.Context, input dto.CreateMenuInput, user commonDto.AuthenticatedUser) (*dto.MenuResponse, *errors.AppError)
+	GetMenuByID(ctx context.Context, id string) (*models.Menu, *errors.AppError)
+	ListMenus(ctx context.Context, limit int, cursor string, queryStr string, restaurantID string, categoryID string, tags []string, minPrice, maxPrice *float64, isAvailable *bool, sortBy, order string) ([]dto.MenuResponse, string, bool, int64, *errors.AppError)
+	UpdateMenu(ctx context.Context, id string, input dto.UpdateMenuInput, user commonDto.AuthenticatedUser) (*dto.MenuResponse, *errors.AppError)
+	DeleteMenu(ctx context.Context, id string, user commonDto.AuthenticatedUser) *errors.AppError
+	MapToResponse(m *models.Menu) *dto.MenuResponse
 }
 
 // isValidMediaType checks if the file extension is allowed
@@ -211,10 +223,10 @@ func (ms *MenuService) AuthorizeRestaurantOwner(ctx context.Context, restaurantI
 }
 
 // Create creates a new menu item
-func (ms *MenuService) Create(ctx context.Context, input dto.CreateMenuInput, userID string, userRole commontypes.UserRole) (*dto.MenuResponse, *errors.AppError) {
+func (ms *MenuService) CreateMenu(ctx context.Context, input dto.CreateMenuInput, user commonDto.AuthenticatedUser) (*dto.MenuResponse, *errors.AppError) {
 	// Permission logic: Managers can only add to their own restaurants
-	if userRole == commontypes.RoleManagement {
-		if err := ms.AuthorizeRestaurantOwner(ctx, input.RestaurantID, userID); err != nil {
+	if user.Role == commontypes.RoleManagement {
+		if err := ms.AuthorizeRestaurantOwner(ctx, input.RestaurantID, user.UserID); err != nil {
 			return nil, err
 		}
 	}
@@ -263,7 +275,7 @@ func (ms *MenuService) Create(ctx context.Context, input dto.CreateMenuInput, us
 }
 
 // GetByID retrieves a menu item by ID
-func (ms *MenuService) GetByID(ctx context.Context, id string) (*models.Menu, *errors.AppError) {
+func (ms *MenuService) GetMenuByID(ctx context.Context, id string) (*models.Menu, *errors.AppError) {
 	menu, err := ms.repo.FindByID(ctx, id)
 	if err != nil {
 		return nil, errors.NotFoundError("Menu item not found")
@@ -331,16 +343,16 @@ func (ms *MenuService) ListMenus(ctx context.Context, limit int, cursor string, 
 	return responses, nextCursor, hasMore, total, nil
 }
 
-// Update updates an existing menu item
-func (ms *MenuService) Update(ctx context.Context, id string, input dto.UpdateMenuInput, userID string, userRole commontypes.UserRole) (*dto.MenuResponse, *errors.AppError) {
-	menu, appErr := ms.GetByID(ctx, id)
+// UpdateMenu updates an existing menu item
+func (ms *MenuService) UpdateMenu(ctx context.Context, id string, input dto.UpdateMenuInput, user commonDto.AuthenticatedUser) (*dto.MenuResponse, *errors.AppError) {
+	menu, appErr := ms.GetMenuByID(ctx, id)
 	if appErr != nil {
 		return nil, appErr
 	}
 
 	// Permission logic: Managers can only update their own items
-	if userRole == commontypes.RoleManagement {
-		if err := ms.AuthorizeRestaurantOwner(ctx, menu.RestaurantID.String(), userID); err != nil {
+	if user.Role == commontypes.RoleManagement {
+		if err := ms.AuthorizeRestaurantOwner(ctx, menu.RestaurantID.String(), user.UserID); err != nil {
 			return nil, err
 		}
 	}
