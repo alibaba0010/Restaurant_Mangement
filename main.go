@@ -17,7 +17,7 @@ import (
 	"github.com/alibaba0010/postgres-api/internal/common/middlewares"
 	"github.com/alibaba0010/postgres-api/internal/config"
 	"github.com/alibaba0010/postgres-api/internal/database"
-	"github.com/alibaba0010/postgres-api/internal/orders/subscribers"
+	"github.com/alibaba0010/postgres-api/internal/orders"
 	"github.com/alibaba0010/postgres-api/internal/routes"
 )
 
@@ -74,8 +74,8 @@ func main() {
     }
     defer consumer.Close()
 
-    // Register Subscribers
-    subscribers.RegisterOrderSubscribers(consumer)
+    // Register Module Subscribers
+    orders.RegisterSubscribers(consumer)
 
     // Start Consumer with graceful shutdown
     consumerDone := make(chan error, 1)
