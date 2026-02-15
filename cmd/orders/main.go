@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/alibaba0010/postgres-api/internal/common/events"
 	"github.com/alibaba0010/postgres-api/internal/common/logger"
@@ -26,10 +27,30 @@ func main() {
 
 	cfg := config.LoadConfig()
 
-	// Initialize Redpanda Consumer for the standalone Service
-	consumer, err := events.NewRedpandaConsumer([]string{cfg.REDPANDA_BROKERS}, "orders-service-group")
+	// Initialize Redpanda Consumer for the standalone Service with retry
+	var consumer *events.RedpandaConsumer
+	var err error
+	maxRetries := 5
+	for i := 0; i < maxRetries; i++ {
+		consumer, err = events.NewRedpandaConsumer([]string{cfg.REDPANDA_BROKERS}, "orders-service-group")
+		if err == nil {
+			pingCtx, cancelPing := context.WithTimeout(context.Background(), 5*time.Second)
+			err = consumer.Ping(pingCtx)
+			cancelPing()
+			
+			if err == nil {
+				break
+			}
+		}
+		
+		logger.Log.Warn("Failed to connect to Redpanda Consumer for Orders, retrying...", 
+			zap.Int("attempt", i+1), 
+			zap.Error(err))
+		time.Sleep(time.Second * time.Duration(i+1))
+	}
+
 	if err != nil {
-		logger.Log.Fatal("Failed to initialize Redpanda Consumer", zap.Error(err))
+		logger.Log.Fatal("Failed to initialize Redpanda Consumer for Orders after retries", zap.Error(err))
 	}
 	defer consumer.Close()
 

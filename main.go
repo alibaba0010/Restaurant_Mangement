@@ -41,36 +41,13 @@ func main() {
     ctx, cancel := context.WithCancel(context.Background())
     defer cancel()
 
-    // Initialize Redpanda Producer with retry
-    var producer *events.RedpandaProducer
-    var err error
-    
-    maxRetries := 3
-    for i := 0; i < maxRetries; i++ {
-        producer, err = events.NewRedpandaProducer([]string{cfg.REDPANDA_BROKERS})
-        if err == nil {
-            break
-        }
-        logger.Log.Warn("Failed to connect to Redpanda Producer, retrying...", 
-            zap.Int("attempt", i+1), 
-            zap.Error(err))
-        time.Sleep(time.Second * time.Duration(i+1))
-    }
-
+    // Initialize Redpanda
+    producer, consumer, err := events.InitializeRedpanda(ctx, cfg)
     if err != nil {
-        // Decide: fail fast or continue without events
-        logger.Log.Fatal("Failed to initialize Redpanda Producer after retries", zap.Error(err))
-    } else {
-        events.SetGlobalProducer(producer)
+        logger.Log.Fatal("Failed to initialize Redpanda Consumer after retries", zap.Error(err))
+    }
+    if producer != nil {
         defer producer.Close()
-        logger.Log.Info("✅ Connected to Redpanda Producer")
-    }
-
-    // Initialize Redpanda Consumer
-    var consumer *events.RedpandaConsumer
-    consumer, err = events.NewRedpandaConsumer([]string{cfg.REDPANDA_BROKERS}, "postgres-api-group")
-    if err != nil {
-        logger.Log.Fatal("Failed to initialize Redpanda Consumer", zap.Error(err))
     }
     defer consumer.Close()
 
