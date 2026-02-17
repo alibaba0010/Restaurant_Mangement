@@ -19,6 +19,5 @@ type SingleDataResponse[T any] struct {
 // AuthenticatedUser is stored in request context for downstream handlers
 type AuthenticatedUser struct {
 	UserID string
-	Email  string
 	Role   types.UserRole
 }

@@ -91,7 +91,7 @@ func LoadConfig() Config {
 			AWS_REGION:              getEnv("AWS_REGION", "us-east-1"),
 			AWS_BUCKET_NAME:         getEnv("AWS_BUCKET_NAME", ""),
 			AWS_CLOUDFRONT_DOMAIN:   getEnv("AWS_CLOUDFRONT_DOMAIN", ""),
-			REDPANDA_BROKERS:        getEnv("REDPANDA_BROKERS", "localhost:9092"),
+			REDPANDA_BROKERS:        getEnv("REDPANDA_BROKERS", "localhost:29092"),
 			PAYSTACK_SECRET_KEY:     getEnv("PAYSTACK_SECRET_KEY", ""),
 			MONNIFY_API_KEY:         getEnv("MONNIFY_API_KEY", ""),
 			MONNIFY_SECRET_KEY:      getEnv("MONNIFY_SECRET_KEY", ""),

@@ -78,7 +78,7 @@ func Logger(next http.Handler) http.Handler {
 			zap.String("path", request.URL.Path),
 			zap.Int("status", lrw.status),
 			zap.Duration("duration", duration),
-			zap.Int64("bytes_written", lrw.size),
+			zap.Int64("bytes_size", lrw.size),
 			zap.String("ip", ip),
 			zap.String("user-agent", request.UserAgent()),
 		)
