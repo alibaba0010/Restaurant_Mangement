@@ -6,7 +6,9 @@ import (
 
 	"github.com/alibaba0010/postgres-api/internal/common/errors"
 	"github.com/alibaba0010/postgres-api/internal/common/guards"
+	"github.com/alibaba0010/postgres-api/internal/common/types"
 	"github.com/alibaba0010/postgres-api/internal/restaurants/dto"
+	"github.com/alibaba0010/postgres-api/internal/restaurants/repositories"
 	"github.com/alibaba0010/postgres-api/internal/restaurants/services"
 	"github.com/alibaba0010/postgres-api/internal/utils"
 )
@@ -14,7 +16,9 @@ import (
 type CategoryController struct {
 	categoryService *services.CategoryService
 	menuService     *services.MenuService
+	restaurantRepo  *repositories.RestaurantRepository
 }
+
 // CategoryControllerInterface defines the interface for category HTTP handlers.
 type CategoryControllerInterface interface {
 	// CreateCategoryHandler handles the request to create a new category.
@@ -22,11 +26,13 @@ type CategoryControllerInterface interface {
 	// ListCategoriesByRestaurantHandler handles the request to list categories for a restaurant.
 	ListCategoriesByRestaurantHandler(writer http.ResponseWriter, request *http.Request)
 }
+
 // NewCategoryController creates a new instance of CategoryController.
-func NewCategoryController(categoryService *services.CategoryService, menuService *services.MenuService) *CategoryController {
+func NewCategoryController(categoryService *services.CategoryService, menuService *services.MenuService, restaurantRepo *repositories.RestaurantRepository) *CategoryController {
 	return &CategoryController{
 		categoryService: categoryService,
 		menuService:     menuService,
+		restaurantRepo:  restaurantRepo,
 	}
 }
 
@@ -44,7 +50,15 @@ func (cc *CategoryController) CreateCategoryHandler(writer http.ResponseWriter, 
 		return
 	}
 
-	resp, appErr := cc.categoryService.CreateCategory(request.Context(), input, *user)
+	// Authorization check: User must own the restaurant
+	if user.Role == types.RoleManagement {
+		if appErr := guards.AuthorizeRestaurantOwner(request.Context(), cc.restaurantRepo, input.RestaurantID, user.UserID); appErr != nil {
+			errors.ErrorResponse(writer, request, appErr)
+			return
+		}
+	}
+
+	resp, appErr := cc.categoryService.CreateCategory(request.Context(), input)
 	if appErr != nil {
 		errors.ErrorResponse(writer, request, appErr)
 		return

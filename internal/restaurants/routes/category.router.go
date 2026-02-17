@@ -19,13 +19,13 @@ func CategoryRoutes(route *mux.Router) {
 	categoryRepo := repositories.NewCategoryRepository(database.DB)
 	menuRepo := repositories.NewMenuRepository(database.DB)
 	restaurantRepo := repositories.NewRestaurantRepository(database.DB)
-
+	
 	// Initialize services
-	categoryService := services.NewCategoryService(categoryRepo, restaurantRepo)
-	menuService := services.NewMenuService(menuRepo, restaurantRepo, nil)
+	categoryService := services.NewCategoryService(categoryRepo)
+	menuService := services.NewMenuService(menuRepo, nil)
 
 	// Initialize controller
-	categoryController := controllers.NewCategoryController(categoryService, menuService)
+	categoryController := controllers.NewCategoryController(categoryService, menuService, restaurantRepo)
 
 	// --- Categories Endpoint ---
 	categories := route.PathPrefix("/categories").Subrouter()

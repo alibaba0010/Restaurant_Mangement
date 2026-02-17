@@ -12,12 +12,13 @@ import (
 	"go.uber.org/zap"
 
 	_ "github.com/alibaba0010/postgres-api/docs"
-	"github.com/alibaba0010/postgres-api/internal/common/events"
+	// "github.com/alibaba0010/postgres-api/internal/common/events"
 	"github.com/alibaba0010/postgres-api/internal/common/logger"
 	"github.com/alibaba0010/postgres-api/internal/common/middlewares"
 	"github.com/alibaba0010/postgres-api/internal/config"
 	"github.com/alibaba0010/postgres-api/internal/database"
-	"github.com/alibaba0010/postgres-api/internal/orders"
+
+	// "github.com/alibaba0010/postgres-api/internal/orders"
 	"github.com/alibaba0010/postgres-api/internal/routes"
 )
 
@@ -37,29 +38,29 @@ func main() {
 
     cfg := config.LoadConfig()
 
-    // Create shutdown context
-    ctx, cancel := context.WithCancel(context.Background())
-    defer cancel()
+    // // Create shutdown context
+    // ctx, cancel := context.WithCancel(context.Background())
+    // defer cancel()
 
-    // Initialize Redpanda
-    producer, consumer, err := events.InitializeRedpanda(ctx, cfg)
-    if err != nil {
-        logger.Log.Fatal("Failed to initialize Redpanda Consumer after retries", zap.Error(err))
-    }
-    if producer != nil {
-        defer producer.Close()
-    }
-    defer consumer.Close()
+    // // Initialize Redpanda
+    // producer, consumer, err := events.InitializeRedpanda(ctx, cfg)
+    // if err != nil {
+    //     logger.Log.Fatal("Failed to initialize Redpanda Consumer after retries", zap.Error(err))
+    // }
+    // if producer != nil {
+    //     defer producer.Close()
+    // }
+    // defer consumer.Close()
 
-    // Register Module Subscribers
-    orders.RegisterSubscribers(consumer)
+    // // Register Module Subscribers
+    // orders.RegisterSubscribers(consumer)
 
-    // Start Consumer with graceful shutdown
-    consumerDone := make(chan error, 1)
-    go func() {
-        consumerDone <- consumer.Start(ctx)
-    }()
-    logger.Log.Info("✅ Redpanda Consumer Started")
+    // // Start Consumer with graceful shutdown
+    // consumerDone := make(chan error, 1)
+    // go func() {
+    //     consumerDone <- consumer.Start(ctx)
+    // }()
+    // logger.Log.Info("✅ Redpanda Consumer Started")
 
     // Setup HTTP server
     port := cfg.Port
@@ -91,14 +92,14 @@ func main() {
     case err := <-serverErrors:
         logger.Log.Fatal("Server error", zap.Error(err))
 
-    case err := <-consumerDone:
-        logger.Log.Error("Consumer stopped", zap.Error(err))
+    // case err := <-consumerDone:
+    //     logger.Log.Error("Consumer stopped", zap.Error(err))
 
-    case sig := <-shutdown:
-        logger.Log.Info("Shutdown signal received", zap.String("signal", sig.String()))
+    // case sig := <-shutdown:
+    //     logger.Log.Info("Shutdown signal received", zap.String("signal", sig.String()))
 
-        // Cancel consumer context
-        cancel()
+    //     // Cancel consumer context
+    //     cancel()
 
         // Shutdown HTTP server gracefully
         shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)

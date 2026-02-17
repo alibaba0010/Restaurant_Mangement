@@ -27,6 +27,20 @@ type RestaurantRepositoryInterface interface {
 	FindAll(ctx context.Context, limit int, cursorStr string, qStr string, userID *string, status *string, sortBy, order string) ([]models.Restaurant, string, bool, int64, error)
 	Update(ctx context.Context, db bun.IDB, restaurant *models.Restaurant, columns ...string) error
 	Delete(ctx context.Context, db bun.IDB, id string) error
+	CheckOwnership(ctx context.Context, restaurantID string, userID string) (bool, error)
+}
+
+// CheckOwnership checks if a user owns a restaurant
+func (r *RestaurantRepository) CheckOwnership(ctx context.Context, restaurantID string, userID string) (bool, error) {
+	exists, err := r.db.NewSelect().
+		Model((*models.Restaurant)(nil)).
+		Where("id = ?", restaurantID).
+		Where("user_id = ?", userID).
+		Exists(ctx)
+	if err != nil {
+		return false, err
+	}
+	return exists, nil
 }
 
 // Create inserts a new restaurant into the database

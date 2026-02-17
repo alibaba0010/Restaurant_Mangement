@@ -8,7 +8,9 @@ import (
 	commondto "github.com/alibaba0010/postgres-api/internal/common/dto"
 	"github.com/alibaba0010/postgres-api/internal/common/errors"
 	"github.com/alibaba0010/postgres-api/internal/common/guards"
+	"github.com/alibaba0010/postgres-api/internal/common/types"
 	"github.com/alibaba0010/postgres-api/internal/restaurants/dto"
+	"github.com/alibaba0010/postgres-api/internal/restaurants/repositories"
 	"github.com/alibaba0010/postgres-api/internal/restaurants/services"
 	"github.com/alibaba0010/postgres-api/internal/utils"
 	"github.com/gorilla/mux"
@@ -16,13 +18,15 @@ import (
 
 // MenuController holds the menu service and provides HTTP handlers
 type MenuController struct {
-	service *services.MenuService
+	service        *services.MenuService
+	restaurantRepo *repositories.RestaurantRepository
 }
 
 // NewMenuController creates a new menu controller with the given service
-func NewMenuController(menuService *services.MenuService) *MenuController {
+func NewMenuController(menuService *services.MenuService, restaurantRepo *repositories.RestaurantRepository) *MenuController {
 	return &MenuController{
-		service: menuService,
+		service:        menuService,
+		restaurantRepo: restaurantRepo,
 	}
 }
 
@@ -205,7 +209,15 @@ func (mc *MenuController) CreateMenuHandler(writer http.ResponseWriter, request 
 		return
 	}
 
-	menu, appErr := mc.service.CreateMenu(request.Context(), input, *user)
+	// Authorization check: User must own the restaurant
+	if user.Role == types.RoleManagement {
+		if appErr := guards.AuthorizeRestaurantOwner(request.Context(), mc.restaurantRepo, input.RestaurantID, user.UserID); appErr != nil {
+			errors.ErrorResponse(writer, request, appErr)
+			return
+		}
+	}
+
+	menu, appErr := mc.service.CreateMenu(request.Context(), input)
 	if appErr != nil {
 		errors.ErrorResponse(writer, request, appErr)
 		return
@@ -301,7 +313,22 @@ func (mc *MenuController) UpdateMenuHandler(writer http.ResponseWriter, request 
 		return
 	}
 
-	updatedMenu, appErr := mc.service.UpdateMenu(request.Context(), id, input, *user)
+	// For Update, we first need to get the menu to find its restaurant ID for the ownership check
+	menu, appErr := mc.service.GetMenuByID(request.Context(), id)
+	if appErr != nil {
+		errors.ErrorResponse(writer, request, appErr)
+		return
+	}
+
+	// Authorization check: User must own the restaurant
+	if user.Role == types.RoleManagement {
+		if appErr := guards.AuthorizeRestaurantOwner(request.Context(), mc.restaurantRepo, menu.RestaurantID.String(), user.UserID); appErr != nil {
+			errors.ErrorResponse(writer, request, appErr)
+			return
+		}
+	}
+
+	updatedMenu, appErr := mc.service.UpdateMenu(request.Context(), id, input)
 	if appErr != nil {
 		errors.ErrorResponse(writer, request, appErr)
 		return

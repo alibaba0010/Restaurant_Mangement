@@ -29,8 +29,8 @@ func MenuRoutes(route *mux.Router) {
 	}
 
 	// Initialize service and controller
-	menuService := services.NewMenuService(menuRepo, restaurantRepo, s3Service)
-	menuController := controllers.NewMenuController(menuService)
+	menuService := services.NewMenuService(menuRepo, s3Service)
+	menuController := controllers.NewMenuController(menuService, restaurantRepo)
 
 	// --- Menus Endpoint ---
 	menus := route.PathPrefix("/menus").Subrouter()

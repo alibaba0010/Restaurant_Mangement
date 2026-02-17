@@ -5,9 +5,7 @@ import (
 	"time"
 
 	"github.com/alibaba0010/postgres-api/internal/common/errors"
-	"github.com/alibaba0010/postgres-api/internal/common/types"
 	"github.com/alibaba0010/postgres-api/internal/restaurants/dto"
-	commonDto "github.com/alibaba0010/postgres-api/internal/common/dto"
 	"github.com/alibaba0010/postgres-api/internal/restaurants/models"
 	"github.com/alibaba0010/postgres-api/internal/restaurants/repositories"
 	"github.com/alibaba0010/postgres-api/internal/utils"
@@ -16,21 +14,20 @@ import (
 
 // CategoryService provides business logic for menu category operations.
 type CategoryService struct {
-	repo           *repositories.CategoryRepository
-	restaurantRepo *repositories.RestaurantRepository
+	repo *repositories.CategoryRepository
+	
 }
 
 // CategoryServiceInterface defines the interface for category operations.
 type CategoryServiceInterface interface {
-	CreateCategory(ctx context.Context, input dto.CreateCategoryInput, user commonDto.AuthenticatedUser) (*dto.CategoryResponse, *errors.AppError)
+	CreateCategory(ctx context.Context, input dto.CreateCategoryInput) (*dto.CategoryResponse, *errors.AppError)
 	ListCategoriesByRestaurant(ctx context.Context, restaurantID string) ([]dto.CategoryResponse, *errors.AppError)
 }
 
 // NewCategoryService creates a new instance of CategoryService.
-func NewCategoryService(repo *repositories.CategoryRepository, restaurantRepo *repositories.RestaurantRepository) *CategoryService {
+func NewCategoryService(repo *repositories.CategoryRepository) *CategoryService {
 	return &CategoryService{
-		repo:           repo,
-		restaurantRepo: restaurantRepo,
+		repo: repo,
 	}
 }
 
@@ -47,8 +44,8 @@ func (s *CategoryService) MapCategoryToResponse(c *models.MenuCategory) dto.Cate
 	}
 }
 
-// CreateCategory handles the logic for creating a new menu category with authorization checks.
-func (s *CategoryService) CreateCategory(ctx context.Context, input dto.CreateCategoryInput, user commonDto.AuthenticatedUser) (*dto.CategoryResponse, *errors.AppError) {
+// CreateCategory handles the logic for creating a new menu category.
+func (s *CategoryService) CreateCategory(ctx context.Context, input dto.CreateCategoryInput) (*dto.CategoryResponse, *errors.AppError) {
 	if err := utils.ValidateInput(input); err != nil {
 		return nil, err
 	}
@@ -56,17 +53,6 @@ func (s *CategoryService) CreateCategory(ctx context.Context, input dto.CreateCa
 	rID, err := uuid.Parse(input.RestaurantID)
 	if err != nil {
 		return nil, errors.ValidationError("Invalid restaurant ID")
-	}
-
-	// Authorization check: Only Admin or the Restaurant Manager can create categories.
-	if user.Role == types.RoleManagement {
-		restaurant, err := s.restaurantRepo.FindByID(ctx, input.RestaurantID)
-		if err != nil {
-			return nil, errors.NotFoundError("Restaurant not found")
-		}
-		if restaurant.UserID == nil || restaurant.UserID.String() != user.UserID {
-			return nil, errors.ForbiddenError("You are not authorized to manage categories for this restaurant")
-		}
 	}
 
 	category := &models.MenuCategory{
