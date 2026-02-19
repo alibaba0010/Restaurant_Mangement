@@ -12,31 +12,40 @@ import (
 	"strings"
 	"time"
 
+	commondto "github.com/alibaba0010/postgres-api/internal/common/dto"
 	"github.com/alibaba0010/postgres-api/internal/common/errors"
 	"github.com/alibaba0010/postgres-api/internal/common/events"
+	"github.com/alibaba0010/postgres-api/internal/common/guards"
 	"github.com/alibaba0010/postgres-api/internal/common/logger"
 	"github.com/alibaba0010/postgres-api/internal/common/s3"
+	commontypes "github.com/alibaba0010/postgres-api/internal/common/types"
 	"github.com/alibaba0010/postgres-api/internal/database"
 	"github.com/alibaba0010/postgres-api/internal/restaurants/dto"
 	"github.com/alibaba0010/postgres-api/internal/restaurants/models"
 	"github.com/alibaba0010/postgres-api/internal/restaurants/repositories"
 	"github.com/alibaba0010/postgres-api/internal/utils"
+
 	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/service/s3/types"
+	s3types "github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/google/uuid"
+	"github.com/shopspring/decimal"
 	"go.uber.org/zap"
 )
 
 // MenuService provides business logic for menu operations
 type MenuService struct {
 	repo           *repositories.MenuRepository
+	categoryRepo   *repositories.CategoryRepository
+	restaurantRepo *repositories.RestaurantRepository
 	s3Service      *s3.S3Service
 }
 
 // NewMenuService creates and returns a new menu service instance
-func NewMenuService(menuRepo *repositories.MenuRepository, s3Service *s3.S3Service) *MenuService {
+func NewMenuService(menuRepo *repositories.MenuRepository, categoryRepo *repositories.CategoryRepository, restaurantRepo *repositories.RestaurantRepository, s3Service *s3.S3Service) *MenuService {
 	return &MenuService{
 		repo:           menuRepo,
+		categoryRepo:   categoryRepo,
+		restaurantRepo: restaurantRepo,
 		s3Service:      s3Service,
 	}
 }
@@ -50,7 +59,7 @@ type MenuServiceInterface interface {
 	UploadMedia(ctx context.Context, userID string, filename string, contentType string, body io.Reader) (string, *errors.AppError)
 	CreateMenu(ctx context.Context, input dto.CreateMenuInput) (*dto.MenuResponse, *errors.AppError)
 	GetMenuByID(ctx context.Context, id string) (*models.Menu, *errors.AppError)
-	ListMenus(ctx context.Context, limit int, cursor string, queryStr string, restaurantID string, categoryID string, tags []string, minPrice, maxPrice *float64, isAvailable *bool, sortBy, order string) ([]dto.MenuResponse, string, bool, int64, *errors.AppError)
+	ListMenus(ctx context.Context, limit int, cursor string, queryStr string, restaurantID string, categoryID string, tags []string, minPrice, maxPrice *decimal.Decimal, isAvailable *bool, sortBy, order string) ([]dto.MenuResponse, string, bool, int64, *errors.AppError)
 	UpdateMenu(ctx context.Context, id string, input dto.UpdateMenuInput) (*dto.MenuResponse, *errors.AppError)
 	DeleteMenu(ctx context.Context, id string) *errors.AppError
 	MapToResponse(m *models.Menu) *dto.MenuResponse
@@ -98,11 +107,27 @@ func (ms *MenuService) MapToResponse(m *models.Menu) *dto.MenuResponse {
 		IsAvailable:     m.IsAvailable,
 		PrepTimeMinutes: m.PrepTimeMinutes,
 		Calories:        m.Calories,
+		StockQuantity:   m.StockQuantity,
+		IsVegetarian:    m.IsVegetarian,
+		IsVegan:         m.IsVegan,
+		IsGlutenFree:    m.IsGlutenFree,
+		Allergens:       m.Allergens,
 		CreatedAt:       m.CreatedAt.Format(time.RFC3339),
 		UpdatedAt:       m.UpdatedAt.Format(time.RFC3339),
 	}
-	if m.CategoryID != nil {
-		resp.CategoryID = m.CategoryID.String()
+	if len(m.Categories) > 0 {
+		resp.Categories = make([]dto.CategoryResponse, len(m.Categories))
+		for i, cat := range m.Categories {
+			resp.Categories[i] = dto.CategoryResponse{
+				ID:           cat.ID.String(),
+				RestaurantID: cat.RestaurantID.String(),
+				Name:         cat.Name,
+				Description:  cat.Description,
+				SortOrder:    cat.SortOrder,
+				CreatedAt:    cat.CreatedAt.Format(time.RFC3339),
+				UpdatedAt:    cat.UpdatedAt.Format(time.RFC3339),
+			}
+		}
 	}
 	return resp
 }
@@ -135,9 +160,9 @@ func (ms *MenuService) GetPartPresignedURL(ctx context.Context, key, uploadID st
 // CompleteMultipartUpload completes the multipart upload
 func (ms *MenuService) CompleteMultipartUpload(ctx context.Context, key, uploadID string, parts []dto.CompletedPart) (string, error) {
 	// Convert DTO parts to S3 types
-	s3Parts := make([]types.CompletedPart, len(parts))
+	s3Parts := make([]s3types.CompletedPart, len(parts))
 	for i, p := range parts {
-		s3Parts[i] = types.CompletedPart{
+		s3Parts[i] = s3types.CompletedPart{
 			PartNumber: aws.Int32(p.PartNumber),
 			ETag:       aws.String(p.ETag),
 		}
@@ -207,7 +232,13 @@ func (ms *MenuService) UploadMedia(ctx context.Context, userID string, filename 
 }
 
 // CreateMenu creates a new menu item
-func (ms *MenuService) CreateMenu(ctx context.Context, input dto.CreateMenuInput) (*dto.MenuResponse, *errors.AppError) {
+func (ms *MenuService) CreateMenu(ctx context.Context, user *commondto.AuthenticatedUser, input dto.CreateMenuInput) (*dto.MenuResponse, *errors.AppError) {
+	// Authorization check: User must own the restaurant
+	if user.Role == commontypes.RoleManagement {
+		if appErr := guards.AuthorizeRestaurantOwner(ctx, ms.restaurantRepo, input.RestaurantID, user.UserID); appErr != nil {
+			return nil, appErr
+		}
+	}
 
 	// Validate input
 	if err := utils.ValidateInput(input); err != nil {
@@ -235,12 +266,49 @@ func (ms *MenuService) CreateMenu(ctx context.Context, input dto.CreateMenuInput
 		IsAvailable:     input.IsAvailable,
 		PrepTimeMinutes: input.PrepTimeMinutes,
 		Calories:        input.Calories,
+		StockQuantity:   input.StockQuantity,
+		IsVegetarian:    input.IsVegetarian,
+		IsVegan:         input.IsVegan,
+		IsGlutenFree:    input.IsGlutenFree,
+		Allergens:       input.Allergens,
 	}
 
-	if input.CategoryID != "" {
-		cID, err := uuid.Parse(input.CategoryID)
-		if err == nil {
-			menu.CategoryID = &cID
+	// Check Categories
+	if len(input.CategoryIDs) > 0 {
+		if len(input.CategoryIDs) > 5 {
+			return nil, errors.ValidationError("A menu item cannot have more than 5 categories")
+		}
+
+		// Check if restaurant actually has categories
+		existingCategories, err := ms.categoryRepo.FindByRestaurantID(ctx, input.RestaurantID)
+		if err != nil {
+			return nil, errors.InternalError(err)
+		}
+		if len(existingCategories) == 0 {
+			return nil, errors.ValidationError("Restaurant has no categories. Please add a category first.")
+		}
+
+		// Map and validate category IDs belong to restaurant
+		catMap := make(map[string]bool)
+		for _, ec := range existingCategories {
+			catMap[ec.ID.String()] = true
+		}
+
+		menu.CategoryIDs = make([]uuid.UUID, 0, len(input.CategoryIDs))
+		for _, idStr := range input.CategoryIDs {
+			if !catMap[idStr] {
+				return nil, errors.ValidationError(fmt.Sprintf("Category ID %s does not belong to this restaurant", idStr))
+			}
+			cID, _ := uuid.Parse(idStr)
+			menu.CategoryIDs = append(menu.CategoryIDs, cID)
+		}
+	} else {
+		// Mandatory check: Must have at least one category according to logic or "check if restaurant has category"
+		// User said: "check if restaurant has category if no a message for the manager to add category first"
+		// This implies the manager MUST add category first and then select categories.
+		existingCategories, _ := ms.categoryRepo.FindByRestaurantID(ctx, input.RestaurantID)
+		if len(existingCategories) == 0 {
+			return nil, errors.ValidationError("Restaurant has no categories. Please add a category first.")
 		}
 	}
 
@@ -262,13 +330,13 @@ func (ms *MenuService) GetMenuByID(ctx context.Context, id string) (*models.Menu
 }
 
 // ListMenus retrieves a paginated list of menu items with filters/cache
-func (ms *MenuService) ListMenus(ctx context.Context, limit int, cursor string, queryStr string, restaurantID string, categoryID string, tags []string, minPrice, maxPrice *float64, isAvailable *bool, sortBy, order string) ([]dto.MenuResponse, string, bool, int64, *errors.AppError) {
-	if limit <= 0 || limit > 100 {
-		limit = 20
+func (ms *MenuService) ListMenus(ctx context.Context, filter dto.ListMenusFilter) ([]dto.MenuResponse, string, bool, int64, *errors.AppError) {
+	if filter.Limit <= 0 || filter.Limit > 100 {
+		filter.Limit = 20
 	}
 
 	// Generate Cache Key
-	cacheKeyPayload := fmt.Sprintf("%d:%s:%s:%s:%s:%v:%v:%v:%v:%s:%s", limit, cursor, queryStr, restaurantID, categoryID, tags, minPrice, maxPrice, isAvailable, sortBy, order)
+	cacheKeyPayload := fmt.Sprintf("%d:%s:%s:%s:%s:%v:%v:%v:%v:%s:%s", filter.Limit, filter.Cursor, filter.Query, filter.RestaurantID, filter.CategoryID, filter.Tags, filter.MinPrice, filter.MaxPrice, filter.IsAvailable, filter.SortBy, filter.Order)
 	hash := sha256.Sum256([]byte(cacheKeyPayload))
 	cacheKey := "menus:list:" + hex.EncodeToString(hash[:])
 
@@ -290,7 +358,7 @@ func (ms *MenuService) ListMenus(ctx context.Context, limit int, cursor string, 
 	}
 
 	// 2. Fetch from Repo
-	menus, nextCursor, hasMore, total, err := ms.repo.FindAll(ctx, limit, cursor, queryStr, restaurantID, categoryID, tags, minPrice, maxPrice, isAvailable, sortBy, order)
+	menus, nextCursor, hasMore, total, err := ms.repo.FindAll(ctx, filter.Limit, filter.Cursor, filter.Query, filter.RestaurantID, filter.CategoryID, filter.Tags, filter.MinPrice, filter.MaxPrice, filter.IsAvailable, filter.SortBy, filter.Order)
 	if err != nil {
 		return nil, "", false, 0, errors.InternalError(err)
 	}
@@ -322,10 +390,17 @@ func (ms *MenuService) ListMenus(ctx context.Context, limit int, cursor string, 
 }
 
 // UpdateMenu updates an existing menu item
-func (ms *MenuService) UpdateMenu(ctx context.Context, id string, input dto.UpdateMenuInput) (*dto.MenuResponse, *errors.AppError) {
+func (ms *MenuService) UpdateMenu(ctx context.Context, user *commondto.AuthenticatedUser, id string, input dto.UpdateMenuInput) (*dto.MenuResponse, *errors.AppError) {
 	menu, appErr := ms.GetMenuByID(ctx, id)
 	if appErr != nil {
 		return nil, appErr
+	}
+
+	// Authorization check: User must own the restaurant
+	if user.Role == commontypes.RoleManagement {
+		if appErr := guards.AuthorizeRestaurantOwner(ctx, ms.restaurantRepo, menu.RestaurantID.String(), user.UserID); appErr != nil {
+			return nil, appErr
+		}
 	}
 
 	// Validate input
@@ -354,10 +429,29 @@ func (ms *MenuService) UpdateMenu(ctx context.Context, id string, input dto.Upda
 	if input.Tags != nil {
 		menu.Tags = input.Tags
 	}
-	if input.CategoryID != nil {
-		cID, err := uuid.Parse(*input.CategoryID)
-		if err == nil {
-			menu.CategoryID = &cID
+	if input.CategoryIDs != nil {
+		if len(input.CategoryIDs) > 5 {
+			return nil, errors.ValidationError("A menu item cannot have more than 5 categories")
+		}
+
+		// Check if restaurant actually has categories
+		existingCategories, err := ms.categoryRepo.FindByRestaurantID(ctx, menu.RestaurantID.String())
+		if err != nil {
+			return nil, errors.InternalError(err)
+		}
+
+		catMap := make(map[string]bool)
+		for _, ec := range existingCategories {
+			catMap[ec.ID.String()] = true
+		}
+
+		menu.CategoryIDs = make([]uuid.UUID, 0, len(input.CategoryIDs))
+		for _, idStr := range input.CategoryIDs {
+			if !catMap[idStr] {
+				return nil, errors.ValidationError(fmt.Sprintf("Category ID %s does not belong to this restaurant", idStr))
+			}
+			cID, _ := uuid.Parse(idStr)
+			menu.CategoryIDs = append(menu.CategoryIDs, cID)
 		}
 	}
 	if input.PrepTimeMinutes != nil {
@@ -365,6 +459,21 @@ func (ms *MenuService) UpdateMenu(ctx context.Context, id string, input dto.Upda
 	}
 	if input.Calories != nil {
 		menu.Calories = *input.Calories
+	}
+	if input.StockQuantity != nil {
+		menu.StockQuantity = *input.StockQuantity
+	}
+	if input.IsVegetarian != nil {
+		menu.IsVegetarian = *input.IsVegetarian
+	}
+	if input.IsVegan != nil {
+		menu.IsVegan = *input.IsVegan
+	}
+	if input.IsGlutenFree != nil {
+		menu.IsGlutenFree = *input.IsGlutenFree
+	}
+	if input.Allergens != nil {
+		menu.Allergens = input.Allergens
 	}
 
 	err := ms.repo.Update(ctx, nil, menu)

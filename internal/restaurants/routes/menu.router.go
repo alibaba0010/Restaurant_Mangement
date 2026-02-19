@@ -29,7 +29,8 @@ func MenuRoutes(route *mux.Router) {
 	}
 
 	// Initialize service and controller
-	menuService := services.NewMenuService(menuRepo, s3Service)
+	categoryRepo := repositories.NewCategoryRepository(database.DB)
+	menuService := services.NewMenuService(menuRepo, categoryRepo, restaurantRepo, s3Service)
 	menuController := controllers.NewMenuController(menuService, restaurantRepo)
 
 	// --- Menus Endpoint ---

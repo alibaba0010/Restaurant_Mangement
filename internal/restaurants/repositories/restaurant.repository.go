@@ -123,16 +123,23 @@ func (r *RestaurantRepository) FindAll(ctx context.Context, limit int, cursorStr
 		}
 
 		// Handle type casting for cursor value based on sortBy field
-		var cursorVal utils.CursorValue
+		var cursorVal any
+		var castErr error
+
 		switch sortBy {
 		case "created_at":
-			cursorVal = utils.GetCursorValueAsTime(decoded.LastValue)
+			cursorVal, castErr = utils.GetCursorValueAsTime(decoded.LastValue)
 		case "rating":
-			cursorVal = utils.GetCursorValueAsFloat(decoded.LastValue)
+			cursorVal, castErr = utils.GetCursorValueAsFloat(decoded.LastValue)
 		case "capacity":
-			cursorVal = utils.GetCursorValueAsInt(decoded.LastValue)
+			cursorVal, castErr = utils.GetCursorValueAsInt(decoded.LastValue)
 		default:
-			cursorVal = utils.GetCursorValueAsString(decoded.LastValue)
+			cursorVal, castErr = utils.GetCursorValueAsString(decoded.LastValue)
+		}
+
+		if castErr != nil {
+			logger.Log.Error("failed to cast cursor value", zap.Error(castErr))
+			return nil, "", false, 0, castErr
 		}
 
 		// Tuple comparison: (column, id) > (value, id)

@@ -8,12 +8,12 @@ import (
 	commondto "github.com/alibaba0010/postgres-api/internal/common/dto"
 	"github.com/alibaba0010/postgres-api/internal/common/errors"
 	"github.com/alibaba0010/postgres-api/internal/common/guards"
-	"github.com/alibaba0010/postgres-api/internal/common/types"
 	"github.com/alibaba0010/postgres-api/internal/restaurants/dto"
 	"github.com/alibaba0010/postgres-api/internal/restaurants/repositories"
 	"github.com/alibaba0010/postgres-api/internal/restaurants/services"
 	"github.com/alibaba0010/postgres-api/internal/utils"
 	"github.com/gorilla/mux"
+	"github.com/shopspring/decimal"
 )
 
 // MenuController holds the menu service and provides HTTP handlers
@@ -209,15 +209,7 @@ func (mc *MenuController) CreateMenuHandler(writer http.ResponseWriter, request 
 		return
 	}
 
-	// Authorization check: User must own the restaurant
-	if user.Role == types.RoleManagement {
-		if appErr := guards.AuthorizeRestaurantOwner(request.Context(), mc.restaurantRepo, input.RestaurantID, user.UserID); appErr != nil {
-			errors.ErrorResponse(writer, request, appErr)
-			return
-		}
-	}
-
-	menu, appErr := mc.service.CreateMenu(request.Context(), input)
+	menu, appErr := mc.service.CreateMenu(request.Context(), user, input)
 	if appErr != nil {
 		errors.ErrorResponse(writer, request, appErr)
 		return
@@ -250,31 +242,36 @@ func (mc *MenuController) GetMenuHandler(writer http.ResponseWriter, request *ht
 func (mc *MenuController) ListMenusHandler(writer http.ResponseWriter, request *http.Request) {
 	params := utils.ParseListParams(request)
 	query := request.URL.Query()
-	restaurantID := query.Get("restaurant_id")
-	categoryID := query.Get("category_id")
-	tagsStr := query.Get("tags")
-	var tags []string
-	if tagsStr != "" {
-		tags = strings.Split(tagsStr, ",")
+
+	filter := dto.ListMenusFilter{
+		RestaurantID: query.Get("restaurant_id"),
+		CategoryID:   query.Get("category_id"),
+		Limit:        params.Limit,
+		Cursor:       params.Cursor,
+		Query:        params.Query,
+		SortBy:       params.SortBy,
+		Order:        params.Order,
 	}
 
-	var minPrice, maxPrice *float64
+	if tagsStr := query.Get("tags"); tagsStr != "" {
+		filter.Tags = strings.Split(tagsStr, ",")
+	}
+
 	if mp := query.Get("min_price"); mp != "" {
-		p := utils.ParseFloat(mp, 0)
-		minPrice = &p
+		p := utils.ParseDecimal(mp, decimal.Zero)
+		filter.MinPrice = &p
 	}
 	if mp := query.Get("max_price"); mp != "" {
-		p := utils.ParseFloat(mp, 0)
-		maxPrice = &p
+		p := utils.ParseDecimal(mp, decimal.Zero)
+		filter.MaxPrice = &p
 	}
 
-	var isAvailable *bool
 	if ia := query.Get("is_available"); ia != "" {
 		b := ia == "true"
-		isAvailable = &b
+		filter.IsAvailable = &b
 	}
 
-	menus, nextCursor, hasMore, total, appErr := mc.service.ListMenus(request.Context(), params.Limit, params.Cursor, params.Query, restaurantID, categoryID, tags, minPrice, maxPrice, isAvailable, params.SortBy, params.Order)
+	menus, nextCursor, hasMore, total, appErr := mc.service.ListMenus(request.Context(), filter)
 	if appErr != nil {
 		errors.ErrorResponse(writer, request, appErr)
 		return
@@ -313,22 +310,7 @@ func (mc *MenuController) UpdateMenuHandler(writer http.ResponseWriter, request 
 		return
 	}
 
-	// For Update, we first need to get the menu to find its restaurant ID for the ownership check
-	menu, appErr := mc.service.GetMenuByID(request.Context(), id)
-	if appErr != nil {
-		errors.ErrorResponse(writer, request, appErr)
-		return
-	}
-
-	// Authorization check: User must own the restaurant
-	if user.Role == types.RoleManagement {
-		if appErr := guards.AuthorizeRestaurantOwner(request.Context(), mc.restaurantRepo, menu.RestaurantID.String(), user.UserID); appErr != nil {
-			errors.ErrorResponse(writer, request, appErr)
-			return
-		}
-	}
-
-	updatedMenu, appErr := mc.service.UpdateMenu(request.Context(), id, input)
+	updatedMenu, appErr := mc.service.UpdateMenu(request.Context(), user, id, input)
 	if appErr != nil {
 		errors.ErrorResponse(writer, request, appErr)
 		return

@@ -14,6 +14,7 @@ import (
 	"github.com/alibaba0010/postgres-api/internal/config"
 
 	"github.com/google/uuid"
+	"github.com/shopspring/decimal"
 	"go.uber.org/zap"
 )
 
@@ -142,6 +143,14 @@ func CalculateTotalPages(total int64, pageSize int) int {
 
 func ParseFloat(value string, defaultValue float64) float64 {
 	parsed, err := strconv.ParseFloat(value, 64)
+	if err != nil {
+		return defaultValue
+	}
+	return parsed
+}
+
+func ParseDecimal(value string, defaultValue decimal.Decimal) decimal.Decimal {
+	parsed, err := decimal.NewFromString(value)
 	if err != nil {
 		return defaultValue
 	}
