@@ -21,8 +21,8 @@ func CategoryRoutes(route *mux.Router) {
 	restaurantRepo := repositories.NewRestaurantRepository(database.DB)
 	
 	// Initialize services
-	categoryService := services.NewCategoryService(categoryRepo)
-	menuService := services.NewMenuService(menuRepo, nil)
+	categoryService := services.NewCategoryService(categoryRepo, restaurantRepo)
+	menuService := services.NewMenuService(menuRepo, categoryRepo, restaurantRepo, nil)
 
 	// Initialize controller
 	categoryController := controllers.NewCategoryController(categoryService, menuService, restaurantRepo)

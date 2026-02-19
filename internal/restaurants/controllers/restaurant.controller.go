@@ -9,7 +9,6 @@ import (
 	"github.com/alibaba0010/postgres-api/internal/common/guards"
 	"github.com/alibaba0010/postgres-api/internal/common/types"
 	"github.com/alibaba0010/postgres-api/internal/restaurants/dto"
-	"github.com/alibaba0010/postgres-api/internal/restaurants/models"
 	"github.com/alibaba0010/postgres-api/internal/restaurants/services"
 	"github.com/alibaba0010/postgres-api/internal/utils"
 	"github.com/gorilla/mux"
@@ -101,7 +100,7 @@ func (rc *RestaurantController) ListRestaurantsHandler(writer http.ResponseWrite
 	var filterUserID *string
 	var filterStatus *string
 	
-	activeStatus := string(models.RestaurantStatusActive)
+	activeStatus := string(types.RestaurantStatusActive)
 
 	user := guards.ExtractAuthenticatedUser(request)
 

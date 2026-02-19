@@ -6,7 +6,6 @@ import (
 
 	"github.com/alibaba0010/postgres-api/internal/common/errors"
 	"github.com/alibaba0010/postgres-api/internal/common/guards"
-	"github.com/alibaba0010/postgres-api/internal/common/types"
 	"github.com/alibaba0010/postgres-api/internal/restaurants/dto"
 	"github.com/alibaba0010/postgres-api/internal/restaurants/repositories"
 	"github.com/alibaba0010/postgres-api/internal/restaurants/services"
@@ -50,15 +49,7 @@ func (cc *CategoryController) CreateCategoryHandler(writer http.ResponseWriter, 
 		return
 	}
 
-	// Authorization check: User must own the restaurant
-	if user.Role == types.RoleManagement {
-		if appErr := guards.AuthorizeRestaurantOwner(request.Context(), cc.restaurantRepo, input.RestaurantID, user.UserID); appErr != nil {
-			errors.ErrorResponse(writer, request, appErr)
-			return
-		}
-	}
-
-	resp, appErr := cc.categoryService.CreateCategory(request.Context(), input)
+	resp, appErr := cc.categoryService.CreateCategory(request.Context(), user, input)
 	if appErr != nil {
 		errors.ErrorResponse(writer, request, appErr)
 		return
@@ -66,6 +57,7 @@ func (cc *CategoryController) CreateCategoryHandler(writer http.ResponseWriter, 
 
 	utils.WriteJSON(writer, http.StatusCreated, resp)
 }
+
 
 // ListCategoriesByRestaurantHandler handles the HTTP request for listing categories of a restaurant.
 func (cc *CategoryController) ListCategoriesByRestaurantHandler(writer http.ResponseWriter, request *http.Request) {

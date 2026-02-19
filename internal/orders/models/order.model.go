@@ -4,18 +4,12 @@ import (
 	"time"
 
 	userModel "github.com/alibaba0010/postgres-api/internal/auth/models"
+	"github.com/alibaba0010/postgres-api/internal/common/types"
 	menuModel "github.com/alibaba0010/postgres-api/internal/restaurants/models"
+	
 	"github.com/google/uuid"
+	"github.com/shopspring/decimal"
 	"github.com/uptrace/bun"
-)
-
-type OrderStatus string
-
-const (
-	OrderStatusPending    OrderStatus = "pending"
-	OrderStatusProcessing OrderStatus = "processing"
-	OrderStatusCompleted  OrderStatus = "completed"
-	OrderStatusCancelled  OrderStatus = "cancelled"
 )
 
 type Order struct {
@@ -24,9 +18,27 @@ type Order struct {
 	ID              uuid.UUID    `bun:"type:uuid,pk,default:gen_random_uuid()" json:"id"`
 	UserID          uuid.UUID    `bun:"type:uuid,notnull" json:"user_id"`
 	RestaurantID    uuid.UUID    `bun:"type:uuid,notnull" json:"restaurant_id"`
-	TotalAmount     float64      `bun:",notnull" json:"total_amount"`
-	Status          OrderStatus  `bun:",notnull,default:'pending'" json:"status"`
+	OrderType       types.OrderType `bun:",notnull,default:'delivery'" json:"order_type"`
+	TotalAmount     decimal.Decimal `bun:"type:decimal(12,2),notnull" json:"total_amount"`
+	Currency        string       `bun:",notnull,default:'USD'" json:"currency"`
+	Status          types.OrderStatus `bun:",notnull,default:'pending'" json:"status"`
+	
+	// Payment Information
+	PaymentStatus    types.PaymentStatus `bun:",notnull,default:'pending'" json:"payment_status"`
+
+	PaymentMethod    string        `bun:",nullzero" json:"payment_method,omitempty"`
+	PaymentReference string        `bun:",nullzero" json:"payment_reference,omitempty"`
+	PaidAt           *time.Time    `bun:",nullzero" json:"paid_at,omitempty"`
+
 	DeliveryAddress string       `bun:",nullzero" json:"delivery_address,omitempty"`
+	
+	// Lifecycle Timestamps
+	ConfirmedAt  *time.Time `bun:",nullzero" json:"confirmed_at,omitempty"`
+	PreparingAt  *time.Time `bun:",nullzero" json:"preparing_at,omitempty"`
+	ReadyAt      *time.Time `bun:",nullzero" json:"ready_at,omitempty"`
+	CompletedAt  *time.Time `bun:",nullzero" json:"completed_at,omitempty"`
+	CancelledAt  *time.Time `bun:",nullzero" json:"cancelled_at,omitempty"`
+
 	CreatedAt       time.Time    `bun:",nullzero,notnull,default:current_timestamp" json:"created_at"`
 	UpdatedAt       time.Time    `bun:",nullzero,notnull,default:current_timestamp" json:"updated_at"`
 
@@ -41,10 +53,10 @@ type OrderItem struct {
 
 	ID        uuid.UUID `bun:"type:uuid,pk,default:gen_random_uuid()" json:"id"`
 	OrderID   uuid.UUID `bun:"type:uuid,notnull" json:"order_id"`
-	MenuID    uuid.UUID `bun:"type:uuid,nullzero" json:"menu_id,omitempty"`
+	MenuID    uuid.UUID `bun:"type:uuid,notnull" json:"menu_id"` // P0: Make non-nullable
 	Name      string    `bun:",notnull" json:"name"`
 	Quantity  int       `bun:",notnull" json:"quantity"`
-	Price     float64   `bun:",notnull" json:"price"`
+	Price     decimal.Decimal `bun:"type:decimal(10,2),notnull" json:"price"` // P0: Decimal for money
 	CreatedAt time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"created_at"`
 	UpdatedAt time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"updated_at"`
 

@@ -7,11 +7,13 @@ import (
 	"time"
 
 	"github.com/alibaba0010/postgres-api/internal/common/logger"
+	"github.com/alibaba0010/postgres-api/internal/common/types"
 	"github.com/alibaba0010/postgres-api/internal/restaurants/models"
 	"github.com/alibaba0010/postgres-api/internal/utils"
 	"github.com/uptrace/bun"
 	"go.uber.org/zap"
 )
+
 
 type RestaurantRepository struct {
 	db *bun.DB
@@ -211,10 +213,10 @@ func (r *RestaurantRepository) Delete(ctx context.Context, db bun.IDB, id string
 	// Perform Soft Delete
 	res, err := db.NewUpdate().
 		Model((*models.Restaurant)(nil)).
-		Set("status = ?", models.RestaurantStatusDeleted).
+		Set("status = ?", types.RestaurantStatusDeleted).
 		Set("updated_at = ?", time.Now()).
 		Where("id = ?", id).
-		Where("status != ?", models.RestaurantStatusDeleted). // Prevent redundant updates
+		Where("status != ?", types.RestaurantStatusDeleted). // Prevent redundant updates
 		Exec(ctx)
 
 	if err != nil {

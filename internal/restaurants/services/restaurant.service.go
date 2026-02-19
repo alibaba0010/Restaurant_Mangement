@@ -6,10 +6,10 @@ import (
 	"time"
 
 	"github.com/alibaba0010/postgres-api/internal/common/address"
+	commonDto "github.com/alibaba0010/postgres-api/internal/common/dto"
 	"github.com/alibaba0010/postgres-api/internal/common/errors"
 	"github.com/alibaba0010/postgres-api/internal/common/logger"
 	"github.com/alibaba0010/postgres-api/internal/common/types"
-	commonDto "github.com/alibaba0010/postgres-api/internal/common/dto"
 	"github.com/alibaba0010/postgres-api/internal/restaurants/dto"
 	"github.com/alibaba0010/postgres-api/internal/restaurants/models"
 	"github.com/alibaba0010/postgres-api/internal/restaurants/repositories"
@@ -115,7 +115,7 @@ func (s *RestaurantService) CreateRestaurant(ctx context.Context, input dto.Crea
 		Latitude:    latitude,
 		Longitude:   longitude,
 		AvatarURL:   input.AvatarURL,
-		Status:      models.RestaurantStatusActive,
+		Status:      types.RestaurantStatusActive,
 		CreatedAt:   time.Now(),
 		UpdatedAt:   time.Now(),
 	}
@@ -130,7 +130,7 @@ func (s *RestaurantService) CreateRestaurant(ctx context.Context, input dto.Crea
 
 	// Set optional fields - but ignore any UserID from input (use authenticated user only)
 	if input.Status != "" {
-		restaurant.Status = models.RestaurantStatus(input.Status)
+		restaurant.Status = types.RestaurantStatus(input.Status)
 	}
 	if input.Capacity != nil && *input.Capacity >= 0 {
 		restaurant.Capacity = *input.Capacity
@@ -345,7 +345,7 @@ func (s *RestaurantService) applyRestaurantUpdates(ctx context.Context, restaura
 
 	// Update status if provided and different
 	if input.Status != "" {
-		newStatus := models.RestaurantStatus(input.Status)
+		newStatus := types.RestaurantStatus(input.Status)
 		if newStatus != restaurant.Status {
 			restaurant.Status = newStatus
 			fieldsToUpdate = append(fieldsToUpdate, "status")

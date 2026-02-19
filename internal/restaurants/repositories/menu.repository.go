@@ -9,6 +9,7 @@ import (
 	"github.com/alibaba0010/postgres-api/internal/common/logger"
 	"github.com/alibaba0010/postgres-api/internal/restaurants/models"
 	"github.com/alibaba0010/postgres-api/internal/utils"
+	"github.com/shopspring/decimal"
 	"github.com/uptrace/bun"
 	"go.uber.org/zap"
 )
@@ -25,13 +26,34 @@ type MenuRespository interface {
 	Create(ctx context.Context, menu *models.Menu) error
 	FindByID(ctx context.Context, id string) (*models.Menu, error)
 	FindByIDs(ctx context.Context, ids []string) ([]models.Menu, error)
-	FindAll(ctx context.Context, limit int, cursorStr string, queryStr string, restaurantID string, categoryID string, tags []string, minPrice, maxPrice *float64, isAvailable *bool, sortBy, order string) ([]models.Menu, string, bool, int64, error)
+	FindAll(ctx context.Context, limit int, cursorStr string, queryStr string, restaurantID string, categoryID string, tags []string, minPrice, maxPrice *decimal.Decimal, isAvailable *bool, sortBy, order string) ([]models.Menu, string, bool, int64, error)
 	Update(ctx context.Context, db bun.IDB, menu *models.Menu, columns ...string) error
 	Delete(ctx context.Context, id string) error
 }
-// Create inserts a new menu item into the database
+// Create inserts a new menu item and its category mappings within a transaction
 func (r *MenuRepository) Create(ctx context.Context, menu *models.Menu) error {
-	_, err := r.db.NewInsert().Model(menu).Exec(ctx)
+	err := r.db.RunInTx(ctx, &sql.TxOptions{}, func(ctx context.Context, tx bun.Tx) error {
+		_, err := tx.NewInsert().Model(menu).Exec(ctx)
+		if err != nil {
+			return err
+		}
+
+		if len(menu.CategoryIDs) > 0 {
+			joins := make([]models.MenuCategoryJoin, len(menu.CategoryIDs))
+			for i, catID := range menu.CategoryIDs {
+				joins[i] = models.MenuCategoryJoin{
+					MenuID:     menu.ID,
+					CategoryID: catID,
+				}
+			}
+			_, err = tx.NewInsert().Model(&joins).Exec(ctx)
+			if err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+
 	if err != nil {
 		logger.Log.Error("failed to create menu item", zap.Error(err))
 		return err
@@ -39,10 +61,14 @@ func (r *MenuRepository) Create(ctx context.Context, menu *models.Menu) error {
 	return nil
 }
 
-// FindByID retrieves a menu item by ID
+// FindByID retrieves a menu item by ID with its categories
 func (r *MenuRepository) FindByID(ctx context.Context, id string) (*models.Menu, error) {
 	menu := new(models.Menu)
-	err := r.db.NewSelect().Model(menu).Where("id = ?", id).Scan(ctx)
+	err := r.db.NewSelect().
+		Model(menu).
+		Relation("Categories").
+		Where("menu.id = ?", id).
+		Scan(ctx)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, err
@@ -53,14 +79,18 @@ func (r *MenuRepository) FindByID(ctx context.Context, id string) (*models.Menu,
 	return menu, nil
 }
 
-// FindByIDs retrieves multiple menu items by their IDs
+// FindByIDs retrieves multiple menu items by their IDs with categories
 func (r *MenuRepository) FindByIDs(ctx context.Context, ids []string) ([]models.Menu, error) {
 	var menus []models.Menu
 	if len(ids) == 0 {
 		return menus, nil
 	}
 
-	err := r.db.NewSelect().Model(&menus).Where("id IN (?)", bun.In(ids)).Scan(ctx)
+	err := r.db.NewSelect().
+		Model(&menus).
+		Relation("Categories").
+		Where("menu.id IN (?)", bun.In(ids)).
+		Scan(ctx)
 	if err != nil {
 		logger.Log.Error("failed to find menu items by ids", zap.Strings("ids", ids), zap.Error(err))
 		return nil, err
@@ -69,7 +99,7 @@ func (r *MenuRepository) FindByIDs(ctx context.Context, ids []string) ([]models.
 }
 
 // FindAll retrieves menu items with various filters and pagination
-func (r *MenuRepository) FindAll(ctx context.Context, limit int, cursorStr string, queryStr string, restaurantID string, categoryID string, tags []string, minPrice, maxPrice *float64, isAvailable *bool, sortBy, order string) ([]models.Menu, string, bool, int64, error) {
+func (r *MenuRepository) FindAll(ctx context.Context, limit int, cursorStr string, queryStr string, restaurantID string, categoryID string, tags []string, minPrice, maxPrice *decimal.Decimal, isAvailable *bool, sortBy, order string) ([]models.Menu, string, bool, int64, error) {
 	// Sanitize Limit
 	if limit <= 0 {
 		limit = 20
@@ -137,23 +167,29 @@ func (r *MenuRepository) FindAll(ctx context.Context, limit int, cursorStr strin
 			op = "<"
 		}
 
-		var cursorVal utils.CursorValue
+		var cursorVal any
+		var castErr error
+
 		switch sortBy {
 		case "created_at":
-			cursorVal = utils.GetCursorValueAsTime(decoded.LastValue)
+			cursorVal, castErr = utils.GetCursorValueAsTime(decoded.LastValue)
 		case "price":
-			cursorVal = utils.GetCursorValueAsFloat(decoded.LastValue)
+			cursorVal, castErr = utils.GetCursorValueAsFloat(decoded.LastValue)
 		case "calories", "prep_time_minutes":
-			cursorVal = utils.GetCursorValueAsInt(decoded.LastValue)
+			cursorVal, castErr = utils.GetCursorValueAsInt(decoded.LastValue)
 		default:
-			cursorVal = utils.GetCursorValueAsString(decoded.LastValue)
+			cursorVal, castErr = utils.GetCursorValueAsString(decoded.LastValue)
 		}
 
-		sel = sel.Where(fmt.Sprintf("(%s, id) %s (?, ?)", sortBy, op), cursorVal, decoded.LastID)
+		if castErr != nil {
+			return nil, "", false, 0, fmt.Errorf("failed to cast cursor value: %w", castErr)
+		}
+
+		sel = sel.Where(fmt.Sprintf("(menu.%s, menu.id) %s (?, ?)", sortBy, op), cursorVal, decoded.LastID)
 	}
 
 	// Order by Sort Column + ID (tie breaker)
-	sel = sel.Order(fmt.Sprintf("%s %s", sortBy, order)).OrderExpr("id " + order)
+	sel = sel.Order(fmt.Sprintf("menu.%s %s", sortBy, order)).OrderExpr("menu.id " + order)
 
 	err = sel.Limit(limit + 1).Scan(ctx)
 	if err != nil {
@@ -189,17 +225,49 @@ func (r *MenuRepository) FindAll(ctx context.Context, limit int, cursorStr strin
 	return menus, nextCursor, hasMore, int64(total), nil
 }
 
-// Update updates an existing menu item
+// Update updates an existing menu item and its category mappings
 func (r *MenuRepository) Update(ctx context.Context, db bun.IDB, menu *models.Menu, columns ...string) error {
 	if db == nil {
 		db = r.db
 	}
-	menu.UpdatedAt = time.Now()
-	q := db.NewUpdate().Model(menu).WherePK()
-	if len(columns) > 0 {
-		q = q.Column(columns...)
-	}
-	_, err := q.Exec(ctx)
+
+	err := r.db.RunInTx(ctx, &sql.TxOptions{}, func(ctx context.Context, tx bun.Tx) error {
+		menu.UpdatedAt = time.Now()
+		updateQuery := tx.NewUpdate().Model(menu).WherePK()
+		if len(columns) > 0 {
+			updateQuery = updateQuery.Column(columns...)
+		}
+		_, err := updateQuery.Exec(ctx)
+		if err != nil {
+			return err
+		}
+
+		// If Categories are provided in the model's CategoryIDs field (populated by service)
+		// We sync the join table.
+		if len(menu.CategoryIDs) > 0 || len(columns) == 0 { // len(columns)==0 means full update
+			// Delete existing joins
+			_, err = tx.NewDelete().Model((*models.MenuCategoryJoin)(nil)).Where("menu_id = ?", menu.ID).Exec(ctx)
+			if err != nil {
+				return err
+			}
+
+			if len(menu.CategoryIDs) > 0 {
+				joins := make([]models.MenuCategoryJoin, len(menu.CategoryIDs))
+				for i, catID := range menu.CategoryIDs {
+					joins[i] = models.MenuCategoryJoin{
+						MenuID:     menu.ID,
+						CategoryID: catID,
+					}
+				}
+				_, err = tx.NewInsert().Model(&joins).Exec(ctx)
+				if err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	})
+
 	if err != nil {
 		logger.Log.Error("failed to update menu item", zap.String("id", menu.ID.String()), zap.Error(err))
 		return err

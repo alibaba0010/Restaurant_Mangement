@@ -4,15 +4,18 @@ import (
 	"context"
 	"time"
 
+	commonDto "github.com/alibaba0010/postgres-api/internal/common/dto"
 	"github.com/alibaba0010/postgres-api/internal/common/errors"
 	"github.com/alibaba0010/postgres-api/internal/common/types"
-	commonDto "github.com/alibaba0010/postgres-api/internal/common/dto"
 	"github.com/alibaba0010/postgres-api/internal/orders/dto"
 	"github.com/alibaba0010/postgres-api/internal/orders/models"
 	"github.com/alibaba0010/postgres-api/internal/orders/repositories"
 	restRepo "github.com/alibaba0010/postgres-api/internal/restaurants/repositories"
+
 	"github.com/alibaba0010/postgres-api/internal/utils"
+	
 	"github.com/google/uuid"
+	"github.com/shopspring/decimal"
 )
 
 type OrderService struct {
@@ -101,11 +104,11 @@ func (s *OrderService) CreateOrder(ctx context.Context, userID string, input dto
 	order := &models.Order{
 		UserID:          uID,
 		RestaurantID:    rID,
-		Status:          models.OrderStatusPending,
+		Status:          types.OrderStatusPending,
 		DeliveryAddress: input.DeliveryAddress,
 	}
 
-	var totalAmount float64
+	var totalAmount decimal.Decimal = decimal.Zero
 	orderItems := make([]*models.OrderItem, len(menuItems))
 
 	for i, menuItem := range menuItems {
@@ -124,7 +127,8 @@ func (s *OrderService) CreateOrder(ctx context.Context, userID string, input dto
 			Quantity: itemInput.Quantity,
 			Price:    menuItem.Price,
 		}
-		totalAmount += menuItem.Price * float64(itemInput.Quantity)
+		itemTotal := menuItem.Price.Mul(decimal.NewFromInt(int64(itemInput.Quantity)))
+		totalAmount = totalAmount.Add(itemTotal)
 	}
 
 	order.TotalAmount = totalAmount
@@ -188,7 +192,7 @@ func (s *OrderService) UpdateOrderStatus(ctx context.Context, id string, status 
 		return errors.ForbiddenError("You are not authorized to update order status")
 	}
 
-	err = s.orderRepo.UpdateStatus(ctx, id, models.OrderStatus(status))
+	err = s.orderRepo.UpdateStatus(ctx, id, types.OrderStatus(status))
 	if err != nil {
 		return errors.InternalError(err)
 	}

@@ -7,8 +7,9 @@ import (
 
 	"github.com/alibaba0010/postgres-api/internal/common/events"
 	"github.com/alibaba0010/postgres-api/internal/common/logger"
-	"github.com/alibaba0010/postgres-api/internal/orders/models"
 	"github.com/alibaba0010/postgres-api/internal/orders/repositories"
+	"github.com/alibaba0010/postgres-api/internal/common/types"
+
 	"go.uber.org/zap"
 )
 type OrderSubscriber struct {
@@ -46,8 +47,8 @@ func (os *OrderSubscriber)handlePaymentSuccessful(ctx context.Context, event eve
 
 	logger.Log.Info("Processing payment_successful event", zap.String("order_id", payload.OrderID), zap.String("status", payload.Status))
 
-	// Update Order Status to Processing
-	if err := os.orderRepo.UpdateStatus(ctx, payload.OrderID, models.OrderStatusProcessing); err != nil {
+	// Update Order Status to Confirmed
+	if err := os.orderRepo.UpdateStatus(ctx, payload.OrderID, types.OrderStatusConfirmed); err != nil {
 		logger.Log.Error("Failed to update order status", zap.Error(err))
 		return err
 	}
@@ -64,7 +65,7 @@ func (os *OrderSubscriber) handlePaymentFailed(ctx context.Context, event events
 
 	// Update Order Status to Cancelled? Or just log.
 	// Let's cancel it for now.
-	if err := os.orderRepo.UpdateStatus(ctx, payload.OrderID, models.OrderStatusCancelled); err != nil {
+	if err := os.orderRepo.UpdateStatus(ctx, payload.OrderID, types.OrderStatusCancelled); err != nil {
 		logger.Log.Error("Failed to update order status", zap.Error(err))
 		return err
 	}

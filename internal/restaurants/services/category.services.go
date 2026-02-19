@@ -4,7 +4,10 @@ import (
 	"context"
 	"time"
 
+	commondto "github.com/alibaba0010/postgres-api/internal/common/dto"
 	"github.com/alibaba0010/postgres-api/internal/common/errors"
+	"github.com/alibaba0010/postgres-api/internal/common/guards"
+	commontypes "github.com/alibaba0010/postgres-api/internal/common/types"
 	"github.com/alibaba0010/postgres-api/internal/restaurants/dto"
 	"github.com/alibaba0010/postgres-api/internal/restaurants/models"
 	"github.com/alibaba0010/postgres-api/internal/restaurants/repositories"
@@ -14,20 +17,21 @@ import (
 
 // CategoryService provides business logic for menu category operations.
 type CategoryService struct {
-	repo *repositories.CategoryRepository
-	
+	repo           *repositories.CategoryRepository
+	restaurantRepo *repositories.RestaurantRepository
 }
 
 // CategoryServiceInterface defines the interface for category operations.
 type CategoryServiceInterface interface {
-	CreateCategory(ctx context.Context, input dto.CreateCategoryInput) (*dto.CategoryResponse, *errors.AppError)
+	CreateCategory(ctx context.Context, user *commondto.AuthenticatedUser, input dto.CreateCategoryInput) (*dto.CategoryResponse, *errors.AppError)
 	ListCategoriesByRestaurant(ctx context.Context, restaurantID string) ([]dto.CategoryResponse, *errors.AppError)
 }
 
 // NewCategoryService creates a new instance of CategoryService.
-func NewCategoryService(repo *repositories.CategoryRepository) *CategoryService {
+func NewCategoryService(repo *repositories.CategoryRepository, restaurantRepo *repositories.RestaurantRepository) *CategoryService {
 	return &CategoryService{
-		repo: repo,
+		repo:           repo,
+		restaurantRepo: restaurantRepo,
 	}
 }
 
@@ -45,7 +49,14 @@ func (s *CategoryService) MapCategoryToResponse(c *models.MenuCategory) dto.Cate
 }
 
 // CreateCategory handles the logic for creating a new menu category.
-func (s *CategoryService) CreateCategory(ctx context.Context, input dto.CreateCategoryInput) (*dto.CategoryResponse, *errors.AppError) {
+func (s *CategoryService) CreateCategory(ctx context.Context, user *commondto.AuthenticatedUser, input dto.CreateCategoryInput) (*dto.CategoryResponse, *errors.AppError) {
+	// Authorization check: User must own the restaurant
+	if user.Role == commontypes.RoleManagement {
+		if appErr := guards.AuthorizeRestaurantOwner(ctx, s.restaurantRepo, input.RestaurantID, user.UserID); appErr != nil {
+			return nil, appErr
+		}
+	}
+
 	if err := utils.ValidateInput(input); err != nil {
 		return nil, err
 	}
@@ -85,3 +96,4 @@ func (s *CategoryService) ListCategoriesByRestaurant(ctx context.Context, restau
 
 	return responses, nil
 }
+

@@ -6,6 +6,8 @@ import (
 
 	"github.com/alibaba0010/postgres-api/internal/common/logger"
 	"github.com/alibaba0010/postgres-api/internal/orders/models"
+	"github.com/alibaba0010/postgres-api/internal/common/types"
+
 	"github.com/uptrace/bun"
 	"go.uber.org/zap"
 )
@@ -126,15 +128,27 @@ func (r *OrderRepository) FindByRestaurantID(ctx context.Context, restaurantID s
 	return orders, nextCursor, hasMore, nil
 }
 
-// UpdateStatus updates the status of an existing order
-func (r *OrderRepository) UpdateStatus(ctx context.Context, id string, status models.OrderStatus) error {
-	_, err := r.db.NewUpdate().
+// UpdateStatus updates the status of an existing order and sets appropriate lifecycle timestamps
+func (r *OrderRepository) UpdateStatus(ctx context.Context, id string, status types.OrderStatus) error {
+	q := r.db.NewUpdate().
 		Model((*models.Order)(nil)).
 		Set("status = ?", status).
-		Set("updated_at = NOW()").
-		Where("id = ?", id).
-		Exec(ctx)
-	
+		Set("updated_at = NOW()")
+
+	switch status {
+	case types.OrderStatusConfirmed:
+		q = q.Set("confirmed_at = NOW()")
+	case types.OrderStatusPreparing:
+		q = q.Set("preparing_at = NOW()")
+	case types.OrderStatusReady:
+		q = q.Set("ready_at = NOW()")
+	case types.OrderStatusCompleted:
+		q = q.Set("completed_at = NOW()")
+	case types.OrderStatusCancelled:
+		q = q.Set("cancelled_at = NOW()")
+	}
+
+	_, err := q.Where("id = ?", id).Exec(ctx)
 	if err != nil {
 		logger.Log.Error("failed to update order status", zap.String("id", id), zap.Error(err))
 		return err
