@@ -71,10 +71,22 @@ func extractToken(request *http.Request) string {
 func ExtractAuthenticatedUser(request *http.Request) *dto.AuthenticatedUser {
 	if v := request.Context().Value(UserClaimsKey); v != nil {
 		if claims, ok := v.(*services.AccessTokenClaims); ok && claims != nil {
-			return &dto.AuthenticatedUser{UserID: claims.UserID, Role: claims.Role}
+			return &dto.AuthenticatedUser{
+				UserID: claims.UserID,
+				Role:   claims.Role,
+			}
 		}
 	}
 	return nil
+}
+
+// GetUserEmail retrieves the user's email from the database given their userID.
+func GetUserEmail(ctx context.Context, userID string) (string, error) {
+	userData, appErr := services.GetUserByID(ctx, userID)
+	if appErr != nil {
+		return "", appErr
+	}
+	return userData.Email, nil
 }
 
 // RequireRole enforces role-based access control using role hierarchy (admin > management > user)

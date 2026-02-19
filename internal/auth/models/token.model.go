@@ -1,10 +1,8 @@
 package models
 
 import (
-	// "context"
 	"time"
 
-	// "github.com/alibaba0010/postgres-api/internal/utils"
 	"github.com/uptrace/bun"
 )
 
@@ -19,15 +17,3 @@ type RefreshToken struct {
 	ExpiresAt time.Time `bun:",notnull" json:"expires_at"`
 	CreatedAt time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"created_at"`
 }
-
-// BeforeInsert hook to generate UUIDv7 for ID if not set
-// func (r *RefreshToken) BeforeInsert(ctx context.Context, _ bun.Query) error {
-// 	if r.ID == "" {
-// 		newUUID, err := utils.GenerateUUIDv7()
-// 		if err != nil {
-// 			return err
-// 		}
-// 		r.ID = newUUID.String()
-// 	}
-// 	return nil
-// }
