@@ -26,41 +26,76 @@ func ConnectDB() *bun.DB {
 	connectionURL := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable",
 		cfg.DB_USERNAME, cfg.DB_PASSWORD, cfg.DB_HOST, cfg.DB_PORT, cfg.DB_NAME)
 
-	config, err := pgx.ParseConfig(connectionURL)
+	// Parse configuration
+	pgConfig, err := pgx.ParseConfig(connectionURL)
 	if err != nil {
 		logger.Log.Fatal("Unable to parse database config", zap.Error(err))
 	}
 
-	Pool = stdlib.OpenDB(*config)
-	Pool.SetMaxIdleConns(25)
-	Pool.SetMaxOpenConns(25)
-	Pool.SetConnMaxLifetime(5 * time.Minute)
+	// For production: tune connection pool settings
+	// 1000+ users might need more than 25 connections depending on request patterns,
+	// but 25-50 is usually a good starting point for a single instance.
+	Pool = stdlib.OpenDB(*pgConfig)
+	Pool.SetMaxIdleConns(10)
+	Pool.SetMaxOpenConns(50)
+	Pool.SetConnMaxLifetime(10 * time.Minute)
+	Pool.SetConnMaxIdleTime(5 * time.Minute)
 
 	// Create a Bun db instance
 	DB = bun.NewDB(Pool, pgdialect.New())
 
-	// Add query debug hook in development
-	DB.AddQueryHook(bundebug.NewQueryHook(
-		bundebug.WithVerbose(true),
-		bundebug.FromEnv(),
-	))
+	// Add query debug hook in development (based on env)
+	if cfg.APP_ENV != "production" {
+		DB.AddQueryHook(bundebug.NewQueryHook(
+			bundebug.WithVerbose(true),
+			bundebug.FromEnv(),
+		))
+	}
 
-	// Test connection
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
+	// Test connection with retries
+	ctx := context.Background()
+	var (
+		pingErr error
+		maxRetries = 5
+	)
 
-	if err := DB.PingContext(ctx); err != nil {
-		logger.Log.Fatal("Database ping failed", zap.Error(err))
+	for i := 0; i < maxRetries; i++ {
+		pingCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+		if pingErr = DB.PingContext(pingCtx); pingErr == nil {
+			cancel()
+			break
+		}
+		cancel()
+		logger.Log.Warn("Database ping failed, retrying...", 
+			zap.Int("attempt", i+1), 
+			zap.Int("max_retries", maxRetries), 
+			zap.Error(pingErr))
+		time.Sleep(time.Duration(i+1) * 2 * time.Second)
+	}
+
+	if pingErr != nil {
+		logger.Log.Fatal("Database connection failed after retries", zap.Error(pingErr))
 	}
 
 	logger.Log.Info("✅ Connected to PostgreSQL database")
 	return DB
 }
 
+// CheckHealth returns an error if the database is unreachable
+func CheckHealth(ctx context.Context) error {
+	if DB == nil {
+		return fmt.Errorf("database not initialized")
+	}
+	return DB.PingContext(ctx)
+}
+
 // Close connection when shutting down
 func CloseDB() {
 	if Pool != nil {
-		Pool.Close()
-		logger.Log.Info("🔌 Database connection closed")
+		if err := Pool.Close(); err != nil {
+			logger.Log.Error("Error closing database connection", zap.Error(err))
+		} else {
+			logger.Log.Info("🔌 Database connection closed")
+		}
 	}
 }

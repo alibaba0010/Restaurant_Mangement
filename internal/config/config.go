@@ -53,6 +53,7 @@ type Config struct {
 	FLUTTERWAVE_SECRET_KEY  string
 	FLUTTERWAVE_PUBLIC_KEY  string
 	FLUTTERWAVE_HASH        string
+	APP_ENV 				string
 }
 
 func LoadConfig() Config {
@@ -99,6 +100,7 @@ func LoadConfig() Config {
 			FLUTTERWAVE_SECRET_KEY:  getEnv("FLUTTERWAVE_SECRET_KEY", ""),
 			FLUTTERWAVE_PUBLIC_KEY:  getEnv("FLUTTERWAVE_PUBLIC_KEY", ""),
 			FLUTTERWAVE_HASH:        getEnv("FLUTTERWAVE_HASH", ""),
+			APP_ENV:                 getEnv("APP_ENV", "development"),
 		}
 	})
 	return cfg

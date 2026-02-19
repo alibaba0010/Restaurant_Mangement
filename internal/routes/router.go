@@ -1,11 +1,9 @@
 package routes
 
 import (
-	"encoding/json"
 	"net/http"
 
 	authRoutes "github.com/alibaba0010/postgres-api/internal/auth/routes"
-	"github.com/alibaba0010/postgres-api/internal/common/dto"
 	"github.com/alibaba0010/postgres-api/internal/common/errors"
 	"github.com/alibaba0010/postgres-api/internal/common/middlewares"
 	orderRoutes "github.com/alibaba0010/postgres-api/internal/orders/routes"
@@ -48,14 +46,4 @@ func ApiRouter() *mux.Router {
 	})
 
 	return route
-}
-
-// HealthCheckHandler returns a simple health status for the API
-func HealthCheckHandler(writer http.ResponseWriter, request *http.Request) {
-	writer.Header().Set("Content-Type", "application/json")
-	resp := dto.MessageResponse{Title: "Success", Message: "API is healthy and running"}
-	if err := json.NewEncoder(writer).Encode(resp); err != nil {
-		http.Error(writer, err.Error(), http.StatusInternalServerError)
-		return
-	}
 }

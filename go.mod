@@ -82,6 +82,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/credentials v1.19.6
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.95.0
 	github.com/codingsince1985/geo-golang v1.8.5
+	github.com/shopspring/decimal v1.4.0
 )
 
 require (

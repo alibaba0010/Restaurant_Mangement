@@ -2,6 +2,7 @@ package database
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -16,20 +17,38 @@ var RedisClient *redis.Client
 func ConnectRedis() *redis.Client {
 	cfg := config.LoadConfig()
 
-	// short-lived context for initial ping
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
 	RedisClient = redis.NewClient(&redis.Options{
 		Addr:     cfg.REDIS_HOST + ":" + cfg.REDIS_PORT,
 		Password: cfg.REDIS_PASSWORD, // no password set
 		DB:       0,                  // use default DB
+		PoolSize: 10,                 // Production: tune pool size
 	})
 
-	// Ping to verify connection
-	err := RedisClient.Ping(ctx).Err()
-	if err != nil {
-		logger.Log.Fatal("❌ Redis connection failed", zap.Error(err))
+	// Test connection with retries
+	ctx := context.Background()
+	var (
+		pingErr error
+		maxRetries = 5
+	)
+
+	for i := 0; i < maxRetries; i++ {
+		pingCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+		pingErr = RedisClient.Ping(pingCtx).Err()
+		cancel()
+		
+		if pingErr == nil {
+			break
+		}
+		
+		logger.Log.Warn("Redis ping failed, retrying...", 
+			zap.Int("attempt", i+1), 
+			zap.Int("max_retries", maxRetries), 
+			zap.Error(pingErr))
+		time.Sleep(time.Duration(i+1) * 2 * time.Second)
+	}
+
+	if pingErr != nil {
+		logger.Log.Fatal("❌ Redis connection failed after retries", zap.Error(pingErr))
 	}
 
 	logger.Log.Info("✅ Connected to Redis")
@@ -40,6 +59,14 @@ func ConnectRedis() *redis.Client {
 	// remove `verify:*` keys that have no TTL set (TTL == -1).
 	go startRedisJanitor()
 	return RedisClient
+}
+
+// CheckRedisHealth returns an error if Redis is unreachable
+func CheckRedisHealth(ctx context.Context) error {
+	if RedisClient == nil {
+		return fmt.Errorf("redis client not initialized")
+	}
+	return RedisClient.Ping(ctx).Err()
 }
 
 // Close connection when shutting down

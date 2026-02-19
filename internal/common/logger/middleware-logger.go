@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	// "sync"
+	"github.com/google/uuid"
 	"go.uber.org/zap"
 )
 
@@ -53,7 +53,11 @@ func Logger(next http.Handler) http.Handler {
 		// 1. Get or Generate Request ID
 		requestID := request.Header.Get("X-Request-ID")
 		if requestID == "" {
-			requestID = "55555555"
+			newUUID, err := uuid.NewV7()
+			if err != nil {
+				return
+			}
+			requestID = newUUID.String()
 		}
 
 		// 2. Add Request ID to context and response header
