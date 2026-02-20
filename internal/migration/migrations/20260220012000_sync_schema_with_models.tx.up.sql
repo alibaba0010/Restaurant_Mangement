@@ -86,3 +86,26 @@ CREATE TABLE IF NOT EXISTS payment_webhook_logs (
     error_message TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
+-- 8. Clean up redundant/dormant indexes
+-- These columns already have PK or UNIQUE constraints with implicit btree indexes
+DROP INDEX IF EXISTS idx_payments_reference;
+DROP INDEX IF EXISTS idx_users_id;
+DROP INDEX IF EXISTS idx_users_email;
+
+-- 9. Add Location fields to Restaurants
+-- Storing latitude and longitude for spatial ordering or discovery
+ALTER TABLE restaurants ADD COLUMN IF NOT EXISTS latitude DECIMAL(10, 8);
+ALTER TABLE restaurants ADD COLUMN IF NOT EXISTS longitude DECIMAL(11, 8);
+
+-- 10. Ensure Payments table column names match the Go model (Reference and ExternalReference)
+-- This fixes the mismatch where some migrations used 'transaction_ref' or 'provider_reference'
+DO $$ 
+BEGIN 
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='payments' AND column_name='transaction_ref') THEN 
+        ALTER TABLE payments RENAME COLUMN transaction_ref TO reference; 
+    END IF; 
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='payments' AND column_name='provider_reference') THEN 
+        ALTER TABLE payments RENAME COLUMN provider_reference TO external_reference; 
+    END IF; 
+END $$; 

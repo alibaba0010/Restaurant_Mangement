@@ -49,3 +49,14 @@ ALTER TABLE menu DROP COLUMN IF EXISTS deleted_at;
 -- 1. Revert restaurants updates
 ALTER TABLE restaurants DROP COLUMN IF EXISTS latitude;
 ALTER TABLE restaurants DROP COLUMN IF EXISTS longitude;
+
+-- 0. Revert Payment column renames
+DO $$ 
+BEGIN 
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='payments' AND column_name='reference') THEN 
+        ALTER TABLE payments RENAME COLUMN reference TO transaction_ref; 
+    END IF; 
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='payments' AND column_name='external_reference') THEN 
+        ALTER TABLE payments RENAME COLUMN external_reference TO provider_reference; 
+    END IF; 
+END $$;
