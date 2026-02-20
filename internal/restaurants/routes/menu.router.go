@@ -47,6 +47,7 @@ func MenuRoutes(route *mux.Router) {
 
 	management.HandleFunc("", menuController.CreateMenuHandler).Methods("POST")
 	management.HandleFunc("/{id}", menuController.UpdateMenuHandler).Methods("PUT", "PATCH")
+	management.HandleFunc("/{id}", menuController.DeleteMenuHandler).Methods("DELETE")
 
 	// Upload Group with strict rate limiting (Recommendation: Rate limit uploads)
 	uploadLimit := middlewares.RateLimit(1, 3) // 1 request per second, 3 burst

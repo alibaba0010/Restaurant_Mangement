@@ -28,7 +28,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	s3types "github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/google/uuid"
-	"github.com/shopspring/decimal"
 	"go.uber.org/zap"
 )
 
@@ -57,11 +56,11 @@ type MenuServiceInterface interface {
 	// AbortMultipartUpload
 	GetUploadURL(ctx context.Context, userID string, filename string, contentType string) (string, string, *errors.AppError)
 	UploadMedia(ctx context.Context, userID string, filename string, contentType string, body io.Reader) (string, *errors.AppError)
-	CreateMenu(ctx context.Context, input dto.CreateMenuInput) (*dto.MenuResponse, *errors.AppError)
+	CreateMenu(ctx context.Context, user *commondto.AuthenticatedUser, input dto.CreateMenuInput) (*dto.MenuResponse, *errors.AppError)
 	GetMenuByID(ctx context.Context, id string) (*models.Menu, *errors.AppError)
-	ListMenus(ctx context.Context, limit int, cursor string, queryStr string, restaurantID string, categoryID string, tags []string, minPrice, maxPrice *decimal.Decimal, isAvailable *bool, sortBy, order string) ([]dto.MenuResponse, string, bool, int64, *errors.AppError)
-	UpdateMenu(ctx context.Context, id string, input dto.UpdateMenuInput) (*dto.MenuResponse, *errors.AppError)
-	DeleteMenu(ctx context.Context, id string) *errors.AppError
+	ListMenus(ctx context.Context, filter dto.ListMenusFilter) ([]dto.MenuResponse, string, bool, int64, *errors.AppError)
+	UpdateMenu(ctx context.Context, user *commondto.AuthenticatedUser, id string, input dto.UpdateMenuInput) (*dto.MenuResponse, *errors.AppError)
+	DeleteMenu(ctx context.Context, user *commondto.AuthenticatedUser, id string) *errors.AppError
 	MapToResponse(m *models.Menu) *dto.MenuResponse
 }
 
@@ -317,6 +316,12 @@ func (ms *MenuService) CreateMenu(ctx context.Context, user *commondto.Authentic
 		return nil, errors.InternalError(err)
 	}
 
+	// Invalidate Cache
+	ms.InvalidateMenuCache(ctx)
+
+	// Publish Event
+	ms.publishMenuEvent(ctx, menu.ID.String(), "menu.created")
+
 	return ms.MapToResponse(menu), nil
 }
 
@@ -387,6 +392,26 @@ func (ms *MenuService) ListMenus(ctx context.Context, filter dto.ListMenusFilter
 	}
 
 	return responses, nextCursor, hasMore, total, nil
+}
+
+// InvalidateMenuCache clears all cached menu lists in Redis.
+func (ms *MenuService) InvalidateMenuCache(ctx context.Context) {
+	utils.InvalidateCacheByPrefix(ctx, "menus:list:")
+}
+
+func (ms *MenuService) publishMenuEvent(ctx context.Context, menuID string, topic string) {
+	producer := events.GetGlobalProducer()
+	if producer == nil {
+		return
+	}
+	
+	// Reusing MenuUpdatedEvent for all menu changes for simplicity, or we can create more types
+	event := NewMenuUpdatedEvent(menuID)
+	event.EventTopic = topic
+	
+	if err := producer.Publish(ctx, event); err != nil {
+		logger.Log.Error("Failed to publish menu event", zap.String("topic", topic), zap.Error(err))
+	}
 }
 
 // UpdateMenu updates an existing menu item
@@ -481,16 +506,41 @@ func (ms *MenuService) UpdateMenu(ctx context.Context, user *commondto.Authentic
 		return nil, errors.InternalError(err)
 	}
 
+	// Invalidate Cache
+	ms.InvalidateMenuCache(ctx)
+
 	// Publish Event
-	producer := events.GetGlobalProducer()
-	if producer != nil {
-		event := NewMenuUpdatedEvent(menu.ID.String())
-		if err := producer.Publish(ctx, event); err != nil {
-			logger.Log.Error("Failed to publish menu updated event", zap.Error(err))
+	ms.publishMenuEvent(ctx, menu.ID.String(), "menu.updated")
+
+	return ms.MapToResponse(menu), nil
+}
+
+// DeleteMenu removes a menu item.
+func (ms *MenuService) DeleteMenu(ctx context.Context, user *commondto.AuthenticatedUser, id string) *errors.AppError {
+	menu, appErr := ms.GetMenuByID(ctx, id)
+	if appErr != nil {
+		return appErr
+	}
+
+	// Authorization check: User must own the restaurant
+	if user.Role == commontypes.RoleManagement {
+		if appErr := guards.AuthorizeRestaurantOwner(ctx, ms.restaurantRepo, menu.RestaurantID.String(), user.UserID); appErr != nil {
+			return appErr
 		}
 	}
 
-	return ms.MapToResponse(menu), nil
+	err := ms.repo.Delete(ctx, id)
+	if err != nil {
+		return errors.InternalError(err)
+	}
+
+	// Invalidate Cache
+	ms.InvalidateMenuCache(ctx)
+
+	// Publish Event
+	ms.publishMenuEvent(ctx, id, "menu.deleted")
+
+	return nil
 }
 
 

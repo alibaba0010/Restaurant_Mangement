@@ -39,5 +39,6 @@ func CategoryRoutes(route *mux.Router) {
 	management.Use(guards.AuthMiddleware, guards.RequireRole(types.RoleManagement.String()))
 
 	management.HandleFunc("", categoryController.CreateCategoryHandler).Methods("POST")
-
+	management.HandleFunc("/{id}", categoryController.UpdateCategoryHandler).Methods("PUT", "PATCH")
+	management.HandleFunc("/{id}", categoryController.DeleteCategoryHandler).Methods("DELETE")
 }

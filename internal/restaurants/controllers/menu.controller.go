@@ -39,6 +39,7 @@ type MenuControllerInterface interface {
 	CreateMenuHandler(writer http.ResponseWriter, request *http.Request)
 	GetMenuMediaHandler(writer http.ResponseWriter, request *http.Request)
 	ListMenuHandler(writer http.ResponseWriter, request *http.Request)
+	DeleteMenuHandler(writer http.ResponseWriter, request *http.Request)
 	DeleteMenuMediaHandler(writer http.ResponseWriter, request *http.Request)
 }
 
@@ -319,5 +320,28 @@ func (mc *MenuController) UpdateMenuHandler(writer http.ResponseWriter, request 
 	utils.WriteJSON(writer, http.StatusOK, commondto.SingleDataResponse[*dto.MenuResponse]{
 		Title: "Menu item updated successfully",
 		Data:  updatedMenu,
+	})
+}
+
+// DeleteMenuHandler handles the deletion of a menu item
+func (mc *MenuController) DeleteMenuHandler(writer http.ResponseWriter, request *http.Request) {
+	vars := mux.Vars(request)
+	id := vars["id"]
+
+	user := guards.ExtractAuthenticatedUser(request)
+	if user == nil {
+		errors.ErrorResponse(writer, request, errors.UnauthorizedError("Authentication required"))
+		return
+	}
+
+	appErr := mc.service.DeleteMenu(request.Context(), user, id)
+	if appErr != nil {
+		errors.ErrorResponse(writer, request, appErr)
+		return
+	}
+
+	utils.WriteJSON(writer, http.StatusOK, commondto.MessageResponse{
+		Title:   "Menu item deleted successfully",
+		Message: "The menu item has been removed from the restaurant.",
 	})
 }

@@ -5,13 +5,14 @@ import (
 	"database/sql"
 
 	"github.com/alibaba0010/postgres-api/internal/common/logger"
-	"github.com/alibaba0010/postgres-api/internal/orders/models"
 	"github.com/alibaba0010/postgres-api/internal/common/types"
+	"github.com/alibaba0010/postgres-api/internal/orders/models"
 
 	"github.com/uptrace/bun"
 	"go.uber.org/zap"
 )
 
+// OrderRepository manages database persistence for Order and OrderItem models.
 type OrderRepository struct {
 	db *bun.DB
 }
@@ -128,9 +129,14 @@ func (r *OrderRepository) FindByRestaurantID(ctx context.Context, restaurantID s
 	return orders, nextCursor, hasMore, nil
 }
 
-// UpdateStatus updates the status of an existing order and sets appropriate lifecycle timestamps
-func (r *OrderRepository) UpdateStatus(ctx context.Context, id string, status types.OrderStatus) error {
-	q := r.db.NewUpdate().
+// UpdateStatus updates the status of an existing order and sets appropriate lifecycle timestamps.
+// It accepts a bun.IDB which can be a transaction or the main DB connection.
+func (r *OrderRepository) UpdateStatus(ctx context.Context, db bun.IDB, id string, status types.OrderStatus) error {
+	if db == nil {
+		db = r.db
+	}
+
+	q := db.NewUpdate().
 		Model((*models.Order)(nil)).
 		Set("status = ?", status).
 		Set("updated_at = NOW()")
@@ -154,4 +160,14 @@ func (r *OrderRepository) UpdateStatus(ctx context.Context, id string, status ty
 		return err
 	}
 	return nil
+}
+
+// RunInTx executes the provided function within a database transaction.
+func (r *OrderRepository) RunInTx(ctx context.Context, fn func(ctx context.Context, tx bun.Tx) error) error {
+	return r.db.RunInTx(ctx, &sql.TxOptions{}, fn)
+}
+
+// GetDB returns the underlying bun.DB instance.
+func (r *OrderRepository) GetDB() *bun.DB {
+	return r.db
 }

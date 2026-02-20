@@ -11,6 +11,7 @@ import (
 	"go.uber.org/zap"
 )
 
+// CategoryRepository handles all database interactions for menu categories.
 type CategoryRepository struct {
 	db *bun.DB
 }
@@ -19,10 +20,12 @@ type CategoryRepository struct {
 func NewCategoryRepository(db *bun.DB) *CategoryRepository {
 	return &CategoryRepository{db: db}
 }
+// CategoryRepositoryInterface defines the contract for menu category database operations.
 type CategoryRepositoryInterface interface {
 	Create(ctx context.Context, category *models.MenuCategory) error
 	FindByID(ctx context.Context, id string) (*models.MenuCategory, error)
 	FindByRestaurantID(ctx context.Context, restaurantID string) ([]models.MenuCategory, error)
+	ListAll(ctx context.Context) ([]models.MenuCategory, error)
 	Update(ctx context.Context, db bun.IDB, category *models.MenuCategory, columns ...string) error
 	Delete(ctx context.Context, id string) error
 }
@@ -65,6 +68,21 @@ func (r *CategoryRepository) FindByRestaurantID(ctx context.Context, restaurantI
 		return nil, err
 	}
 	return categories, err
+}
+
+// ListAll retrieves all menu categories available in the database
+func (r *CategoryRepository) ListAll(ctx context.Context) ([]models.MenuCategory, error) {
+	var categories []models.MenuCategory
+	err := r.db.NewSelect().
+		Model(&categories).
+		Order("name ASC").
+		Scan(ctx)
+
+	if err != nil {
+		logger.Log.Error("failed to list all menu categories", zap.Error(err))
+		return nil, err
+	}
+	return categories, nil
 }
 
 // Update updates an existing menu category

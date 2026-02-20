@@ -9,11 +9,14 @@ import (
 	"github.com/alibaba0010/postgres-api/internal/common/logger"
 	"github.com/alibaba0010/postgres-api/internal/restaurants/models"
 	"github.com/alibaba0010/postgres-api/internal/utils"
+	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
 	"github.com/uptrace/bun"
 	"go.uber.org/zap"
 )
 
+// MenuRepository manages persistence logic for Menu items,
+// including their complex relations with categories (many-to-many).
 type MenuRepository struct {
 	db *bun.DB
 }
@@ -22,12 +25,15 @@ type MenuRepository struct {
 func NewMenuRepository(db *bun.DB) *MenuRepository {
 	return &MenuRepository{db: db}
 }
+// MenuRespository defines the contract for menu data persistence.
 type MenuRespository interface {
 	Create(ctx context.Context, menu *models.Menu) error
 	FindByID(ctx context.Context, id string) (*models.Menu, error)
 	FindByIDs(ctx context.Context, ids []string) ([]models.Menu, error)
 	FindAll(ctx context.Context, limit int, cursorStr string, queryStr string, restaurantID string, categoryID string, tags []string, minPrice, maxPrice *decimal.Decimal, isAvailable *bool, sortBy, order string) ([]models.Menu, string, bool, int64, error)
+	FindByIDsWithLock(ctx context.Context, db bun.IDB, ids []string) ([]models.Menu, error)
 	Update(ctx context.Context, db bun.IDB, menu *models.Menu, columns ...string) error
+	UpdateStock(ctx context.Context, db bun.IDB, menuID uuid.UUID, quantityChange int) error
 	Delete(ctx context.Context, id string) error
 }
 // Create inserts a new menu item and its category mappings within a transaction
@@ -93,6 +99,28 @@ func (r *MenuRepository) FindByIDs(ctx context.Context, ids []string) ([]models.
 		Scan(ctx)
 	if err != nil {
 		logger.Log.Error("failed to find menu items by ids", zap.Strings("ids", ids), zap.Error(err))
+		return nil, err
+	}
+	return menus, nil
+}
+
+// FindByIDsWithLock retrieves multiple menu items by their IDs with a row-level lock (FOR UPDATE).
+func (r *MenuRepository) FindByIDsWithLock(ctx context.Context, db bun.IDB, ids []string) ([]models.Menu, error) {
+	if db == nil {
+		db = r.db
+	}
+	var menus []models.Menu
+	if len(ids) == 0 {
+		return menus, nil
+	}
+
+	err := db.NewSelect().
+		Model(&menus).
+		Where("id IN (?)", bun.In(ids)).
+		For("UPDATE").
+		Scan(ctx)
+	if err != nil {
+		logger.Log.Error("failed to find and lock menu items by ids", zap.Strings("ids", ids), zap.Error(err))
 		return nil, err
 	}
 	return menus, nil
@@ -270,6 +298,43 @@ func (r *MenuRepository) Update(ctx context.Context, db bun.IDB, menu *models.Me
 
 	if err != nil {
 		logger.Log.Error("failed to update menu item", zap.String("id", menu.ID.String()), zap.Error(err))
+		return err
+	}
+	return nil
+}
+
+// UpdateStock increments or decrements the stock quantity of a menu item atomically.
+func (r *MenuRepository) UpdateStock(ctx context.Context, db bun.IDB, menuID uuid.UUID, quantityChange int) error {
+	if db == nil {
+		db = r.db
+	}
+
+	_, err := db.NewUpdate().
+		Model((*models.Menu)(nil)).
+		Set("stock_quantity = stock_quantity + ?", quantityChange).
+		Set("updated_at = NOW()").
+		Where("id = ?", menuID).
+		Exec(ctx)
+
+	if err != nil {
+		logger.Log.Error("failed to update menu item stock", zap.String("id", menuID.String()), zap.Error(err))
+		return err
+	}
+	return nil
+}
+
+// Delete removes a menu item and its category mappings by ID.
+func (r *MenuRepository) Delete(ctx context.Context, id string) error {
+	err := r.db.RunInTx(ctx, &sql.TxOptions{}, func(ctx context.Context, tx bun.Tx) error {
+		_, err := tx.NewDelete().Model((*models.MenuCategoryJoin)(nil)).Where("menu_id = ?", id).Exec(ctx)
+		if err != nil {
+			return err
+		}
+		_, err = tx.NewDelete().Model((*models.Menu)(nil)).Where("id = ?", id).Exec(ctx)
+		return err
+	})
+	if err != nil {
+		logger.Log.Error("failed to delete menu item", zap.String("id", id), zap.Error(err))
 		return err
 	}
 	return nil

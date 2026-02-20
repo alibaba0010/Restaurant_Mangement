@@ -22,3 +22,19 @@ func NewMenuUpdatedEvent(menuID string) *MenuUpdatedEvent {
 		MenuID: menuID,
 	}
 }
+type CategoryEvent struct {
+	events.BaseEvent
+	CategoryID string `json:"category_id"`
+}
+
+func NewCategoryEvent(categoryID string, topic string) *CategoryEvent {
+	payload, _ := json.Marshal(map[string]string{"category_id": categoryID})
+	return &CategoryEvent{
+		BaseEvent: events.BaseEvent{
+			EventTopic:   topic,
+			EventKey:     categoryID,
+			EventPayload: payload,
+		},
+		CategoryID: categoryID,
+	}
+}

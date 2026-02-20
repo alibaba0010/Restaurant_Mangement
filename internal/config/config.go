@@ -53,6 +53,8 @@ type Config struct {
 	FLUTTERWAVE_SECRET_KEY  string
 	FLUTTERWAVE_PUBLIC_KEY  string
 	FLUTTERWAVE_HASH        string
+	TURNSTILE_SITE_KEY      string
+	TURNSTILE_SECRET_KEY    string
 	APP_ENV 				string
 }
 
@@ -100,6 +102,8 @@ func LoadConfig() Config {
 			FLUTTERWAVE_SECRET_KEY:  getEnv("FLUTTERWAVE_SECRET_KEY", ""),
 			FLUTTERWAVE_PUBLIC_KEY:  getEnv("FLUTTERWAVE_PUBLIC_KEY", ""),
 			FLUTTERWAVE_HASH:        getEnv("FLUTTERWAVE_HASH", ""),
+			TURNSTILE_SITE_KEY:      getEnv("TURNSTILE_SITE_KEY", ""),
+			TURNSTILE_SECRET_KEY:    getEnv("TURNSTILE_SECRET_KEY", ""),
 			APP_ENV:                 getEnv("APP_ENV", "development"),
 		}
 	})

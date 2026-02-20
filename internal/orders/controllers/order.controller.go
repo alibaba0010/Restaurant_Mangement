@@ -14,13 +14,19 @@ import (
 	"github.com/gorilla/mux"
 )
 
+// OrderController handles HTTP requests for customer orders,
+// providing endpoints for creation, retrieval, and fulfillment status updates.
 type OrderController struct {
 	service *services.OrderService
 }
+// OrderControllerInterface defines the interface for order HTTP handlers.
 type OrderControllerInterface interface { 
 	CreateOrderHandler(writer http.ResponseWriter, request *http.Request)
+	// GetUserOrdersHandler handles GET /orders to retrieve the authenticated user's order history.
 	GetUserOrdersHandler(writer http.ResponseWriter, request *http.Request)
+	// GetOrderByIDHandler handles GET /orders/{id} to retrieve specific order details.
 	GetOrderByIDHandler(writer http.ResponseWriter, request *http.Request)
+	// UpdateOrderStatusHandler handles PATCH /orders/{id}/status for management status updates.
 	UpdateOrderStatusHandler(writer http.ResponseWriter, request *http.Request)
 }
 // NewOrderController creates a new instance of OrderController.
