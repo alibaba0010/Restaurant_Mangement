@@ -36,32 +36,36 @@ func MenuRoutes(route *mux.Router) {
 	// --- Menus Endpoint ---
 	menus := route.PathPrefix("/menus").Subrouter()
 
-	// 1. Public Routes (No Auth)
-	// List Menus with filters - Public with strict rate limiting
-	menus.Handle("", middlewares.RateLimit(5, 10)(http.HandlerFunc(menuController.ListMenusHandler))).Methods("GET")
-	menus.HandleFunc("/{id}", menuController.GetMenuHandler).Methods("GET")
-
-	// Protected Management Routes with stricter Rate Limiting for Uploads
+	// 1. Protected Management Routes (Specific routes FIRST)
 	management := menus.PathPrefix("").Subrouter()
 	management.Use(guards.AuthMiddleware, guards.RequireRole(types.RoleManagement.String()))
 
-	management.HandleFunc("", menuController.CreateMenuHandler).Methods("POST")
-	management.HandleFunc("/{id}", menuController.UpdateMenuHandler).Methods("PUT", "PATCH")
-	management.HandleFunc("/{id}", menuController.DeleteMenuHandler).Methods("DELETE")
+	uploadLimit := middlewares.RateLimit(1, 3)
 
-	// Upload Group with strict rate limiting (Recommendation: Rate limit uploads)
-	uploadLimit := middlewares.RateLimit(1, 3) // 1 request per second, 3 burst
-	
+	// Specific Management Routes
 	management.Handle("/upload", uploadLimit(http.HandlerFunc(menuController.UploadMenuMediaHandler))).Methods("POST")
 	management.Handle("/upload-url", uploadLimit(http.HandlerFunc(menuController.GetMenuUploadURLHandler))).Methods("GET")
 
-	// Multipart Upload Group
+	// Multipart Group
 	multipart := management.PathPrefix("/multipart").Subrouter()
 	multipart.Use(uploadLimit)
 	multipart.HandleFunc("/initiate", menuController.InitiateMultipartUploadHandler).Methods("POST")
 	multipart.HandleFunc("/part-url", menuController.GetMultipartPartURLHandler).Methods("GET")
+	// Server-proxied chunk upload — avoids browser→S3 CORS issues
+	multipart.HandleFunc("/upload-part", menuController.UploadMultipartPartHandler).Methods("POST")
 	multipart.HandleFunc("/complete", menuController.CompleteMultipartUploadHandler).Methods("POST")
+	multipart.HandleFunc("/abort", menuController.AbortMultipartUploadHandler).Methods("POST")
 
+	management.HandleFunc("", menuController.CreateMenuHandler).Methods("POST")
+
+	// Generic Management Routes (ID-based) - defined AFTER specific ones
+	management.HandleFunc("/{id}", menuController.UpdateMenuHandler).Methods("PUT", "PATCH")
+	management.HandleFunc("/{id}", menuController.DeleteMenuHandler).Methods("DELETE")
+
+	// 2. Public Routes
+	menus.Handle("", middlewares.RateLimit(5, 10)(http.HandlerFunc(menuController.ListMenusHandler))).Methods("GET")
+	
+	// Generic Public Route (ID-based) - defined LAST
+	menus.HandleFunc("/{id}", menuController.GetMenuHandler).Methods("GET")
 
 }
-	

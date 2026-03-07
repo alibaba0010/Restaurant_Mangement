@@ -66,6 +66,31 @@ func (r *OrderRepository) FindByID(ctx context.Context, id string) (*models.Orde
 	return order, nil
 }
 
+// FindByIDWithLock retrieves an order by ID with a row-level lock (FOR UPDATE).
+func (r *OrderRepository) FindByIDWithLock(ctx context.Context, db bun.IDB, id string) (*models.Order, error) {
+	if db == nil {
+		db = r.db
+	}
+	order := new(models.Order)
+	err := db.NewSelect().
+		Model(order).
+		Relation("OrderItems").
+		Relation("Restaurant").
+		Relation("User").
+		Where("order.id = ?", id).
+		For("UPDATE").
+		Scan(ctx)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, err
+		}
+		logger.Log.Error("failed to find and lock order by id", zap.String("id", id), zap.Error(err))
+		return nil, err
+	}
+	return order, nil
+}
+
 // FindByUserID retrieves orders for a specific user with pagination
 func (r *OrderRepository) FindByUserID(ctx context.Context, userID string, limit int, cursor string) ([]models.Order, string, bool, error) {
 	var orders []models.Order

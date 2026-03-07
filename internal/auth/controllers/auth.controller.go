@@ -21,6 +21,10 @@ import (
 // sendAuthResponse is a helper to centralize setting cookies and writing the final success response.
 // sendAuthResponse is a helper to centralize setting cookies and writing the final success response.
 func sendAuthResponse(writer http.ResponseWriter, user *models.User, tokens *services.TokenPair, title string) {
+	// Set new cookies
+	cfg := config.LoadConfig()
+	isSecure := strings.HasPrefix(cfg.FRONTEND_URL, "https")
+	utils.ClearCookies(writer, isSecure)
 	utils.SetAuthCookies(writer, tokens.AccessToken, tokens.RefreshToken, services.AccessTokenDuration, services.RefreshTokenDuration)
 
 	resp := dto.SigninResponse{
@@ -43,6 +47,11 @@ func sendAuthResponse(writer http.ResponseWriter, user *models.User, tokens *ser
 }
 
 func SignupHandler(writer http.ResponseWriter, request *http.Request) {
+	// Clear any existing tokens
+	cfg := config.LoadConfig()
+	isSecure := strings.HasPrefix(cfg.FRONTEND_URL, "https")
+	utils.ClearCookies(writer, isSecure)
+
 	var input dto.SignupInput
 
 	// Decode JSON
@@ -93,6 +102,11 @@ func ActivateUserHandler(writer http.ResponseWriter, request *http.Request) {
 }
 
 func SigninHandler(writer http.ResponseWriter, request *http.Request) {
+	// Clear any existing tokens
+	cfg := config.LoadConfig()
+	isSecure := strings.HasPrefix(cfg.FRONTEND_URL, "https")
+	utils.ClearCookies(writer, isSecure)
+
 	var input dto.SigninInput
 
 	// Decode JSON
@@ -163,6 +177,9 @@ func RefreshTokenHandler(writer http.ResponseWriter, request *http.Request) {
 	}
 
 	// Set new cookies
+	cfg := config.LoadConfig()
+	isSecure := strings.HasPrefix(cfg.FRONTEND_URL, "https")
+	utils.ClearCookies(writer, isSecure)
 	utils.SetAuthCookies(writer, newTokenPair.AccessToken, newTokenPair.RefreshToken, services.AccessTokenDuration, services.RefreshTokenDuration)
 
 	// Return new access token in body

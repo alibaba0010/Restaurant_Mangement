@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/alibaba0010/postgres-api/internal/common/logger"
-	
+
 	"github.com/jackc/pgconn"
 	"go.uber.org/zap"
 )
@@ -87,8 +87,7 @@ func RecoverMiddleware(next http.Handler) http.Handler {
 				// remove the stack logging below.
 				logger.Log.Error("panic recovered in request",
 					zap.String("path", r.URL.Path),
-					// zap.Any("panic", rec),
-					// zap.String("stack", string(debug.Stack())),
+					zap.Any("panic", rec),
 				)
 				// send generic 500 response without exposing internal details
 				ErrorResponse(w, r, InternalError(fmt.Errorf("panic")))

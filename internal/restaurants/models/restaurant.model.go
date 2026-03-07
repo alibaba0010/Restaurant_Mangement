@@ -4,7 +4,7 @@ import (
 	"time"
 
 	"github.com/alibaba0010/postgres-api/internal/common/types"
-	
+
 	"github.com/google/uuid"
 	"github.com/uptrace/bun"
 )
@@ -26,6 +26,8 @@ type Restaurant struct {
 	Rating            float64          `bun:",nullzero" json:"rating"`
 	Latitude          float64          `bun:",nullzero" json:"latitude"`
 	Longitude         float64          `bun:",nullzero" json:"longitude"`
+	AccountNumber     string           `bun:",nullzero" json:"account_number,omitempty"`
+	BankName          string           `bun:",nullzero" json:"bank_name,omitempty"`
 	CreatedAt         time.Time        `bun:",nullzero,notnull,default:current_timestamp" json:"created_at"`
 	UpdatedAt         time.Time        `bun:",nullzero,notnull,default:current_timestamp" json:"updated_at"`
 }

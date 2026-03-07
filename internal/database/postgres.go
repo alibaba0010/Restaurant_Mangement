@@ -8,6 +8,7 @@ import (
 
 	"github.com/alibaba0010/postgres-api/internal/common/logger"
 	"github.com/alibaba0010/postgres-api/internal/config"
+	"github.com/alibaba0010/postgres-api/internal/restaurants/models"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/uptrace/bun"
@@ -43,6 +44,7 @@ func ConnectDB() *bun.DB {
 
 	// Create a Bun db instance
 	DB = bun.NewDB(Pool, pgdialect.New())
+	DB.RegisterModel((*models.MenuCategoryJoin)(nil))
 
 	// Add query debug hook in development (based on env)
 	if cfg.APP_ENV != "production" {

@@ -24,6 +24,7 @@ import (
 	"github.com/alibaba0010/postgres-api/internal/restaurants/models"
 	"github.com/alibaba0010/postgres-api/internal/restaurants/repositories"
 	"github.com/alibaba0010/postgres-api/internal/utils"
+	"github.com/uptrace/bun"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	s3types "github.com/aws/aws-sdk-go-v2/service/s3/types"
@@ -48,14 +49,15 @@ func NewMenuService(menuRepo *repositories.MenuRepository, categoryRepo *reposit
 		s3Service:      s3Service,
 	}
 }
+
 type MenuServiceInterface interface {
 	generateKey(s3Service *s3.S3Service, userID, filename, contentType string) string
 	InitiateMultipartUpload(ctx context.Context, userID, filename, contentType string) (*dto.InitiateMultipartUploadResponse, error)
 	GetPartPresignedURL(ctx context.Context, key, uploadID string, partNumber int32) (string, error)
 	CompleteMultipartUpload(ctx context.Context, key, uploadID string, parts []dto.CompletedPart) (string, error)
-	// AbortMultipartUpload
+	AbortMultipartUpload(ctx context.Context, key, uploadID string) *errors.AppError
 	GetUploadURL(ctx context.Context, userID string, filename string, contentType string) (string, string, *errors.AppError)
-	UploadMedia(ctx context.Context, userID string, filename string, contentType string, body io.Reader) (string, *errors.AppError)
+	UploadMedia(ctx context.Context, userID string, filename string, contentType string, body io.Reader, fileSize int64) (string, *errors.AppError)
 	CreateMenu(ctx context.Context, user *commondto.AuthenticatedUser, input dto.CreateMenuInput) (*dto.MenuResponse, *errors.AppError)
 	GetMenuByID(ctx context.Context, id string) (*models.Menu, *errors.AppError)
 	ListMenus(ctx context.Context, filter dto.ListMenusFilter) ([]dto.MenuResponse, string, bool, int64, *errors.AppError)
@@ -131,7 +133,7 @@ func (ms *MenuService) MapToResponse(m *models.Menu) *dto.MenuResponse {
 	return resp
 }
 
-// InitiateMultipartUpload starts a multipart upload and returns uploadid and unique key 
+// InitiateMultipartUpload starts a multipart upload and returns uploadid and unique key
 func (ms *MenuService) InitiateMultipartUpload(ctx context.Context, userID, filename, contentType string) (*dto.InitiateMultipartUploadResponse, error) {
 	// Recommendation: Restrict file types explicitly
 	if !isAllowedContentType(contentType) {
@@ -156,6 +158,16 @@ func (ms *MenuService) GetPartPresignedURL(ctx context.Context, key, uploadID st
 	return ms.s3Service.GetPresignedPartURL(ctx, key, uploadID, partNumber)
 }
 
+// UploadMultipartPart proxies the chunk body from the client to S3 via the AWS SDK.
+// This avoids the browser → S3 CORS preflight issue entirely.
+func (ms *MenuService) UploadMultipartPart(ctx context.Context, key, uploadID string, partNumber int32, body io.Reader, contentLength int64) (string, error) {
+	etag, err := ms.s3Service.UploadPart(ctx, key, uploadID, partNumber, body, contentLength)
+	if err != nil {
+		return "", err
+	}
+	return etag, nil
+}
+
 // CompleteMultipartUpload completes the multipart upload
 func (ms *MenuService) CompleteMultipartUpload(ctx context.Context, key, uploadID string, parts []dto.CompletedPart) (string, error) {
 	// Convert DTO parts to S3 types
@@ -168,6 +180,15 @@ func (ms *MenuService) CompleteMultipartUpload(ctx context.Context, key, uploadI
 	}
 
 	return ms.s3Service.CompleteMultipartUpload(ctx, key, uploadID, s3Parts)
+}
+
+// AbortMultipartUpload aborts a multipart upload
+func (ms *MenuService) AbortMultipartUpload(ctx context.Context, key, uploadID string) *errors.AppError {
+	err := ms.s3Service.AbortMultipartUpload(ctx, key, uploadID)
+	if err != nil {
+		return errors.InternalError(err)
+	}
+	return nil
 }
 
 // GetUploadURL generates a presigned URL for menu media uploads
@@ -196,7 +217,7 @@ func (ms *MenuService) GetUploadURL(ctx context.Context, userID string, filename
 }
 
 // UploadMedia handles direct media upload to S3
-func (ms *MenuService) UploadMedia(ctx context.Context, userID string, filename string, contentType string, body io.Reader) (string, *errors.AppError) {
+func (ms *MenuService) UploadMedia(ctx context.Context, userID string, filename string, contentType string, body io.Reader, fileSize int64) (string, *errors.AppError) {
 	// Recommendation: Never trust the file extension
 	if !isValidMediaType(filename) {
 		return "", errors.ValidationError("Invalid file extension")
@@ -222,7 +243,7 @@ func (ms *MenuService) UploadMedia(ctx context.Context, userID string, filename 
 
 	key := generateKey(ms.s3Service, userID, filename, detectedType)
 
-	err = ms.s3Service.DirectUpload(ctx, key, fullBody, detectedType)
+	err = ms.s3Service.DirectUpload(ctx, key, fullBody, fileSize, detectedType)
 	if err != nil {
 		return "", errors.InternalError(err)
 	}
@@ -404,11 +425,11 @@ func (ms *MenuService) publishMenuEvent(ctx context.Context, menuID string, topi
 	if producer == nil {
 		return
 	}
-	
+
 	// Reusing MenuUpdatedEvent for all menu changes for simplicity, or we can create more types
 	event := NewMenuUpdatedEvent(menuID)
 	event.EventTopic = topic
-	
+
 	if err := producer.Publish(ctx, event); err != nil {
 		logger.Log.Error("Failed to publish menu event", zap.String("topic", topic), zap.Error(err))
 	}
@@ -416,93 +437,110 @@ func (ms *MenuService) publishMenuEvent(ctx context.Context, menuID string, topi
 
 // UpdateMenu updates an existing menu item
 func (ms *MenuService) UpdateMenu(ctx context.Context, user *commondto.AuthenticatedUser, id string, input dto.UpdateMenuInput) (*dto.MenuResponse, *errors.AppError) {
-	menu, appErr := ms.GetMenuByID(ctx, id)
-	if appErr != nil {
-		return nil, appErr
-	}
-
-	// Authorization check: User must own the restaurant
-	if user.Role == commontypes.RoleManagement {
-		if appErr := guards.AuthorizeRestaurantOwner(ctx, ms.restaurantRepo, menu.RestaurantID.String(), user.UserID); appErr != nil {
-			return nil, appErr
-		}
-	}
-
 	// Validate input
 	if err := utils.ValidateInput(input); err != nil {
 		return nil, err
 	}
 
-	if input.Name != nil {
-		menu.Name = strings.TrimSpace(*input.Name)
-	}
-	if input.Description != nil {
-		menu.Description = strings.TrimSpace(*input.Description)
-	}
-	if input.Price != nil {
-		menu.Price = *input.Price
-	}
-	if input.ImageURLs != nil {
-		menu.ImageURLs = input.ImageURLs
-	}
-	if input.VideoURL != nil {
-		menu.VideoURL = strings.TrimSpace(*input.VideoURL)
-	}
-	if input.IsAvailable != nil {
-		menu.IsAvailable = *input.IsAvailable
-	}
-	if input.Tags != nil {
-		menu.Tags = input.Tags
-	}
-	if input.CategoryIDs != nil {
-		if len(input.CategoryIDs) > 5 {
-			return nil, errors.ValidationError("A menu item cannot have more than 5 categories")
-		}
+	var updatedMenu *models.Menu
 
-		// Check if restaurant actually has categories
-		existingCategories, err := ms.categoryRepo.FindByRestaurantID(ctx, menu.RestaurantID.String())
+	err := ms.repo.RunInTx(ctx, func(ctx context.Context, tx bun.Tx) error {
+		// 1. Fetch menu with FOR UPDATE to prevent race conditions
+		menu, err := ms.repo.FindByIDWithLock(ctx, tx, id)
 		if err != nil {
-			return nil, errors.InternalError(err)
+			return errors.NotFoundError("Menu item not found")
 		}
 
-		catMap := make(map[string]bool)
-		for _, ec := range existingCategories {
-			catMap[ec.ID.String()] = true
-		}
-
-		menu.CategoryIDs = make([]uuid.UUID, 0, len(input.CategoryIDs))
-		for _, idStr := range input.CategoryIDs {
-			if !catMap[idStr] {
-				return nil, errors.ValidationError(fmt.Sprintf("Category ID %s does not belong to this restaurant", idStr))
+		// 2. Authorization check: User must own the restaurant
+		if user.Role == commontypes.RoleManagement {
+			if appErr := guards.AuthorizeRestaurantOwner(ctx, ms.restaurantRepo, menu.RestaurantID.String(), user.UserID); appErr != nil {
+				return appErr
 			}
-			cID, _ := uuid.Parse(idStr)
-			menu.CategoryIDs = append(menu.CategoryIDs, cID)
 		}
-	}
-	if input.PrepTimeMinutes != nil {
-		menu.PrepTimeMinutes = *input.PrepTimeMinutes
-	}
-	if input.Calories != nil {
-		menu.Calories = *input.Calories
-	}
-	if input.StockQuantity != nil {
-		menu.StockQuantity = *input.StockQuantity
-	}
-	if input.IsVegetarian != nil {
-		menu.IsVegetarian = *input.IsVegetarian
-	}
-	if input.IsVegan != nil {
-		menu.IsVegan = *input.IsVegan
-	}
-	if input.IsGlutenFree != nil {
-		menu.IsGlutenFree = *input.IsGlutenFree
-	}
-	if input.Allergens != nil {
-		menu.Allergens = input.Allergens
-	}
 
-	err := ms.repo.Update(ctx, nil, menu)
+		// 3. Apply changes to menu
+		if input.Name != nil {
+			menu.Name = strings.TrimSpace(*input.Name)
+		}
+		if input.Description != nil {
+			menu.Description = strings.TrimSpace(*input.Description)
+		}
+		if input.Price != nil {
+			menu.Price = *input.Price
+		}
+		if input.ImageURLs != nil {
+			menu.ImageURLs = input.ImageURLs
+		}
+		if input.VideoURL != nil {
+			menu.VideoURL = strings.TrimSpace(*input.VideoURL)
+		}
+		if input.IsAvailable != nil {
+			menu.IsAvailable = *input.IsAvailable
+		}
+		if input.Tags != nil {
+			menu.Tags = input.Tags
+		}
+		if input.CategoryIDs != nil {
+			if len(input.CategoryIDs) > 5 {
+				return errors.ValidationError("A menu item cannot have more than 5 categories")
+			}
+
+			// Check if restaurant actually has categories
+			existingCategories, err := ms.categoryRepo.FindByRestaurantID(ctx, menu.RestaurantID.String())
+			if err != nil {
+				return errors.InternalError(err)
+			}
+
+			catMap := make(map[string]bool)
+			for _, ec := range existingCategories {
+				catMap[ec.ID.String()] = true
+			}
+
+			menu.CategoryIDs = make([]uuid.UUID, 0, len(input.CategoryIDs))
+			for _, idStr := range input.CategoryIDs {
+				if !catMap[idStr] {
+					return errors.ValidationError(fmt.Sprintf("Category ID %s does not belong to this restaurant", idStr))
+				}
+				cID, _ := uuid.Parse(idStr)
+				menu.CategoryIDs = append(menu.CategoryIDs, cID)
+			}
+		}
+		if input.PrepTimeMinutes != nil {
+			menu.PrepTimeMinutes = *input.PrepTimeMinutes
+		}
+		if input.Calories != nil {
+			menu.Calories = *input.Calories
+		}
+		if input.StockQuantity != nil {
+			menu.StockQuantity = *input.StockQuantity
+		}
+		if input.IsVegetarian != nil {
+			menu.IsVegetarian = *input.IsVegetarian
+		}
+		if input.IsVegan != nil {
+			menu.IsVegan = *input.IsVegan
+		}
+		if input.IsGlutenFree != nil {
+			menu.IsGlutenFree = *input.IsGlutenFree
+		}
+		if input.Allergens != nil {
+			menu.Allergens = input.Allergens
+		}
+
+		// 4. Update the menu in DB
+		err = ms.repo.Update(ctx, tx, menu)
+		if err != nil {
+			return errors.InternalError(err)
+		}
+
+		updatedMenu = menu
+		return nil
+	})
+
 	if err != nil {
+		if appErr, ok := err.(*errors.AppError); ok {
+			return nil, appErr
+		}
 		return nil, errors.InternalError(err)
 	}
 
@@ -510,9 +548,9 @@ func (ms *MenuService) UpdateMenu(ctx context.Context, user *commondto.Authentic
 	ms.InvalidateMenuCache(ctx)
 
 	// Publish Event
-	ms.publishMenuEvent(ctx, menu.ID.String(), "menu.updated")
+	ms.publishMenuEvent(ctx, updatedMenu.ID.String(), "menu.updated")
 
-	return ms.MapToResponse(menu), nil
+	return ms.MapToResponse(updatedMenu), nil
 }
 
 // DeleteMenu removes a menu item.
@@ -542,6 +580,3 @@ func (ms *MenuService) DeleteMenu(ctx context.Context, user *commondto.Authentic
 
 	return nil
 }
-
-
-

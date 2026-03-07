@@ -19,6 +19,7 @@ import (
 	"github.com/alibaba0010/postgres-api/internal/database"
 
 	"github.com/alibaba0010/postgres-api/internal/orders"
+	"github.com/alibaba0010/postgres-api/internal/restaurants"
 	"github.com/alibaba0010/postgres-api/internal/routes"
 )
 
@@ -54,6 +55,7 @@ func main() {
 
     // Register Module Subscribers
     orders.RegisterSubscribers(consumer)
+    restaurants.RegisterSubscribers(consumer)
 
     // Start Consumer with graceful shutdown
     consumerDone := make(chan error, 1)

@@ -111,6 +111,10 @@ func SetAccessTokenCookie(writer http.ResponseWriter, accessToken string, tokenD
 	http.SetCookie(writer, cookie)
 }
 
+func ClearCookies(writer http.ResponseWriter, isSecure bool) {
+	ClearRefreshTokenCookie(writer, isSecure)
+	ClearAccessTokenCookie(writer, isSecure)
+}
 // ClearAccessTokenCookie clears the access token cookie.
 func ClearAccessTokenCookie(writer http.ResponseWriter, isSecure bool) {
 	cookie := &http.Cookie{

@@ -18,15 +18,12 @@ type Coordinates struct {
 	Longitude float64 `json:"longitude"`
 }
 
-// AddressInput represents a physical address structure used for formatting and validation.
+// AddressInput represents a simplified physical address structure used for formatting and validation.
 type AddressInput struct {
-	Name               string   `json:"name,omitempty"`
-	Organization       string   `json:"organization,omitempty"`
-	StreetAddress      []string `json:"street_address"`
-	City               string   `json:"city"`
-	AdministrativeArea string   `json:"administrative_area,omitempty"` // State/Province
-	PostCode           string   `json:"post_code"`
-	CountryCode        string   `json:"country_code"` // ISO 3166-1 alpha-2
+	Address  string `json:"address" validate:"required"`
+	City     string `json:"city" validate:"required"`
+	Country  string `json:"country" validate:"required"`
+	PostCode string `json:"post_code,omitempty"`
 }
 
 // Address Service defines the interface for address related operations.
@@ -102,18 +99,21 @@ func (s *addressService) ReverseGeocode(ctx context.Context, lat, lng float64) (
 func (s *addressService) Format(addr AddressInput) (string, *errors.AppError) {
 	// Convert AddressInput to Boostport/address Address struct
 	bpAddr := address.Address{
-		Name:               addr.Name,
-		Organization:       addr.Organization,
-		StreetAddress:      addr.StreetAddress,
-		Locality:           addr.City,
-		AdministrativeArea: addr.AdministrativeArea,
-		PostCode:           addr.PostCode,
-		Country:            addr.CountryCode,
+		StreetAddress: []string{addr.Address},
+		Locality:      addr.City,
+		PostCode:      addr.PostCode,
+		Country:       addr.Country,
 	}
 
 	// Validate the address
 	if err := address.Validate(bpAddr); err != nil {
-		return "", errors.ValidationError("address validation failed: " + err.Error())
+		// Fallback to simple formatting if validation fails (e.g., country name vs code)
+		formatted := addr.Address + ", " + addr.City
+		if addr.PostCode != "" {
+			formatted += ", " + addr.PostCode
+		}
+		formatted += ", " + addr.Country
+		return formatted, nil
 	}
 
 	// Format the address using PostalLabelFormatter

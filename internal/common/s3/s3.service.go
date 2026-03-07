@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"strings"
 	"time"
 
 	envConfig "github.com/alibaba0010/postgres-api/internal/config"
@@ -132,17 +133,18 @@ func (s *S3Service) CompleteMultipartUpload(ctx context.Context, key, uploadID s
 
 // DirectUpload uploads a file directly from an io.Reader to S3.
 // Useful for smaller files or when client-side direct upload is not preferred.
-func (s *S3Service) DirectUpload(ctx context.Context, key string, body io.Reader, contentType string) error {
+func (s *S3Service) DirectUpload(ctx context.Context, key string, body io.Reader, contentLength int64, contentType string) error {
 	// Use a 10-minute timeout for the upload. We don't use the request context directly as the primary
 	// because intermediate proxies (like Next.js rewrites) might time out the request context at 30s.
 	uploadCtx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
 
 	_, err := s.s3Client.PutObject(uploadCtx, &s3.PutObjectInput{
-		Bucket:      aws.String(s.bucket),
-		Key:         aws.String(key),
-		Body:        body,
-		ContentType: aws.String(contentType),
+		Bucket:        aws.String(s.bucket),
+		Key:           aws.String(key),
+		Body:          body,
+		ContentType:   aws.String(contentType),
+		ContentLength: aws.Int64(contentLength),
 	})
 	return err
 }
@@ -159,6 +161,34 @@ func (s *S3Service) AbortMultipartUpload(ctx context.Context, key, uploadID stri
 		UploadId: aws.String(uploadID),
 	})
 	return err
+}
+
+// UploadPart uploads a single part of a multipart upload directly via the AWS SDK.
+// This is the server-proxy path: the server receives the raw chunk bytes from the client
+// and forwards them to S3 without any browser→S3 cross-origin requests.
+// Returns the ETag (without surrounding quotes) required for CompleteMultipartUpload.
+func (s *S3Service) UploadPart(ctx context.Context, key, uploadID string, partNumber int32, body io.Reader, contentLength int64) (string, error) {
+	uploadCtx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
+
+	resp, err := s.s3Client.UploadPart(uploadCtx, &s3.UploadPartInput{
+		Bucket:        aws.String(s.bucket),
+		Key:           aws.String(key),
+		UploadId:      aws.String(uploadID),
+		PartNumber:    aws.Int32(partNumber),
+		Body:          body,
+		ContentLength: aws.Int64(contentLength),
+	})
+	if err != nil {
+		return "", err
+	}
+
+	// Strip surrounding quotes from ETag as S3 includes them
+	etag := ""
+	if resp.ETag != nil {
+		etag = strings.Trim(*resp.ETag, `"`)
+	}
+	return etag, nil
 }
 
 

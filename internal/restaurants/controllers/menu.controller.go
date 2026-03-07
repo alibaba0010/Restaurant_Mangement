@@ -3,6 +3,7 @@ package controllers
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"strings"
 
 	commondto "github.com/alibaba0010/postgres-api/internal/common/dto"
@@ -34,6 +35,7 @@ type MenuControllerInterface interface {
 	InitiateMultipartUploadHandler(writer http.ResponseWriter, request *http.Request)
 	GetMultipartPartURLHandler(writer http.ResponseWriter, request *http.Request)
 	CompleteMultipartUploadHandler(writer http.ResponseWriter, request *http.Request)
+	AbortMultipartUploadHandler(writer http.ResponseWriter, request *http.Request)
 	GetMenuUploadURLHandler(writer http.ResponseWriter, request *http.Request)
 	UploadMenuMediaHandler(writer http.ResponseWriter, request *http.Request)
 	CreateMenuHandler(writer http.ResponseWriter, request *http.Request)
@@ -100,6 +102,55 @@ func (mc *MenuController) GetMultipartPartURLHandler(writer http.ResponseWriter,
 	})
 }
 
+// UploadMultipartPartHandler handles server-proxied chunk uploads to S3.
+// The client sends the raw binary chunk body; the server forwards it to S3 using the
+// AWS SDK (server-to-S3, no CORS preflight from the browser).
+// Query params: key, upload_id, part_number
+func (mc *MenuController) UploadMultipartPartHandler(writer http.ResponseWriter, request *http.Request) {
+	query := request.URL.Query()
+	key := query.Get("key")
+	uploadID := query.Get("upload_id")
+	partNumberStr := query.Get("part_number")
+
+	if key == "" || uploadID == "" || partNumberStr == "" {
+		errors.ErrorResponse(writer, request, errors.ValidationError("key, upload_id, and part_number are required"))
+		return
+	}
+
+	partNumber, err := strconv.ParseInt(partNumberStr, 10, 32)
+	if err != nil || partNumber <= 0 {
+		errors.ErrorResponse(writer, request, errors.ValidationError("part_number must be a positive integer"))
+		return
+	}
+
+	// Content-Length is required so S3 knows the part size
+	contentLength := request.ContentLength
+	if contentLength <= 0 {
+		errors.ErrorResponse(writer, request, errors.ValidationError("Content-Length header is required"))
+		return
+	}
+
+	etag, svcErr := mc.service.UploadMultipartPart(
+		request.Context(),
+		key,
+		uploadID,
+		int32(partNumber),
+		request.Body,
+		contentLength,
+	)
+	if svcErr != nil {
+		errors.ErrorResponse(writer, request, errors.InternalError(svcErr))
+		return
+	}
+
+	resp := dto.UploadMultipartPartResponse{
+		Title: "Part uploaded successfully",
+	}
+	resp.Data.ETag = etag
+	resp.Data.PartNumber = int32(partNumber)
+	utils.WriteJSON(writer, http.StatusOK, resp)
+}
+
 // CompleteMultipartUploadHandler handles the completion of a multipart upload
 func (mc *MenuController) CompleteMultipartUploadHandler(writer http.ResponseWriter, request *http.Request) {
 	var input dto.CompleteMultipartUploadInput
@@ -120,6 +171,26 @@ func (mc *MenuController) CompleteMultipartUploadHandler(writer http.ResponseWri
 	})
 }
 
+// AbortMultipartUploadHandler handles the abortion of a multipart upload
+func (mc *MenuController) AbortMultipartUploadHandler(writer http.ResponseWriter, request *http.Request) {
+	var input dto.AbortMultipartUploadInput
+	if err := json.NewDecoder(request.Body).Decode(&input); err != nil {
+		errors.ErrorResponse(writer, request, errors.ValidationError("Invalid request body"))
+		return
+	}
+
+	appErr := mc.service.AbortMultipartUpload(request.Context(), input.Key, input.UploadID)
+	if appErr != nil {
+		errors.ErrorResponse(writer, request, appErr)
+		return
+	}
+
+	utils.WriteJSON(writer, http.StatusOK, dto.AbortMultipartUploadResponse{
+		Title:   "Multipart upload aborted",
+		Message: "The upload process was successfully canceled.",
+	})
+}
+
 // GetMenuUploadURLHandler handles the request for a presigned URL for menu media uploads
 func (mc *MenuController) GetMenuUploadURLHandler(writer http.ResponseWriter, request *http.Request) {
 	filename := request.URL.Query().Get("filename")
@@ -135,8 +206,6 @@ func (mc *MenuController) GetMenuUploadURLHandler(writer http.ResponseWriter, re
 		errors.ErrorResponse(writer, request, errors.UnauthorizedError("Authentication required"))
 		return
 	}
-
-
 
 	uploadURL, publicURL, appErr := mc.service.GetUploadURL(request.Context(), user.UserID, filename, contentType)
 	if appErr != nil {
@@ -178,7 +247,7 @@ func (mc *MenuController) UploadMenuMediaHandler(writer http.ResponseWriter, req
 	contentType := header.Header.Get("Content-Type")
 	filename := header.Filename
 
-	publicURL, appErr := mc.service.UploadMedia(request.Context(), user.UserID, filename, contentType, file)
+	publicURL, appErr := mc.service.UploadMedia(request.Context(), user.UserID, filename, contentType, file, header.Size)
 	if appErr != nil {
 		errors.ErrorResponse(writer, request, appErr)
 		return

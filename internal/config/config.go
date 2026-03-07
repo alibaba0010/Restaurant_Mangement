@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"strings"
 	"sync"
 
 	"github.com/alibaba0010/postgres-api/internal/common/logger"
@@ -112,6 +113,9 @@ func LoadConfig() Config {
 
 func getEnv(key, fallback string) string {
 	if val, ok := os.LookupEnv(key); ok && val != "" {
+		// Trim whitespace and potential quotes
+		val = strings.TrimSpace(val)
+		val = strings.Trim(val, "\"'")
 		return val
 	}
 	return fallback

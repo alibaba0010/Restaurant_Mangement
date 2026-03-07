@@ -6,7 +6,7 @@ import (
 	userModel "github.com/alibaba0010/postgres-api/internal/auth/models"
 	"github.com/alibaba0010/postgres-api/internal/common/types"
 	menuModel "github.com/alibaba0010/postgres-api/internal/restaurants/models"
-	
+
 	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
 	"github.com/uptrace/bun"
@@ -19,6 +19,8 @@ type Order struct {
 	UserID          uuid.UUID    `bun:"type:uuid,notnull" json:"user_id"`
 	RestaurantID    uuid.UUID    `bun:"type:uuid,notnull" json:"restaurant_id"`
 	OrderType       types.OrderType `bun:",notnull,default:'delivery'" json:"order_type"`
+	Subtotal        decimal.Decimal `bun:"type:decimal(12,2),notnull" json:"subtotal"`
+	ServiceCharge   decimal.Decimal `bun:"type:decimal(12,2),notnull,default:0" json:"service_charge"`
 	TotalAmount     decimal.Decimal `bun:"type:decimal(12,2),notnull" json:"total_amount"`
 	Currency        string       `bun:",notnull,default:'USD'" json:"currency"`
 	Status          types.OrderStatus `bun:",notnull,default:'pending'" json:"status"`

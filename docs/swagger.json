@@ -2,27 +2,27 @@
   "swagger": "2.0",
   "info": {
     "title": "Restaurant Management API",
-    "description": "A Restaurant Management API built using Go",
-    "version": "1.0.0",
-    "contact": {
-      "email": "your.email@example.com"
-    },
-    "license": {
-      "name": "Apache 2.0",
-      "url": "http://www.apache.org/licenses/LICENSE-2.0.html"
-    }
+    "description": "A robust REST API built with Go, featuring PostgreSQL integration, structured logging, and Swagger documentation for managing restaurant operations.",
+    "version": "1.0",
+    "contact": {}
   },
   "host": "localhost:8001",
   "basePath": "/api/v1",
-  "schemes": ["http"],
-  "consumes": ["application/json"],
-  "produces": ["application/json"],
+  "schemes": ["http", "https"],
+  "tags": [
+    { "name": "system", "description": "System operations" },
+    { "name": "Auth", "description": "Authentication operations" },
+    { "name": "Users", "description": "Operations about users" },
+    { "name": "Restaurants", "description": "Operations about restaurants" },
+    { "name": "Menus", "description": "Operations about menu items" },
+    { "name": "Orders", "description": "Order management operations" },
+    { "name": "Payments", "description": "Payment processing and webhooks" }
+  ],
   "securityDefinitions": {
     "Bearer": {
       "type": "apiKey",
       "name": "Authorization",
-      "in": "header",
-      "description": "Enter the token with the Bearer prefix, e.g. 'Bearer abcde12345'"
+      "in": "header"
     }
   },
   "paths": {
@@ -30,560 +30,259 @@
       "get": {
         "tags": ["system"],
         "summary": "API Health Check",
-        "description": "Returns the health status of the API",
-        "operationId": "healthCheck",
         "responses": {
           "200": {
             "description": "API is healthy",
-            "schema": {
-              "type": "object",
-              "properties": {
-                "title": {
-                  "type": "string",
-                  "example": "Success"
-                },
-                "message": {
-                  "type": "string",
-                  "example": "API is healthy and running"
-                }
-              },
-              "required": ["title", "message"]
-            }
+            "schema": { "$ref": "#/definitions/MessageResponse" }
           }
         }
       }
     },
-    "/users": {
-      "get": {
-        "tags": ["users"],
-        "summary": "List all users",
-        "description": "Returns a list of users in the system",
-        "operationId": "listUsers",
-        "security": [
-          {
-            "Bearer": []
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful operation",
-            "schema": {
-              "type": "object",
-              "properties": {
-                "title": {
-                  "type": "string",
-                  "example": "Success"
-                },
-                "data": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/definitions/User"
-                  }
-                }
-              },
-              "required": ["title", "data"]
-            }
-          },
-          "401": {
-            "description": "Unauthorized",
-            "schema": {
-              "$ref": "#/definitions/Error"
-            }
-          },
-          "500": {
-            "description": "Internal server error",
-            "schema": {
-              "$ref": "#/definitions/Error"
-            }
-          }
-        }
-      },
+    "/auth/signup": {
       "post": {
-        "tags": ["users"],
-        "summary": "Create a new user",
-        "description": "Creates a new user in the system",
-        "operationId": "createUser",
+        "tags": ["Auth"],
+        "summary": "User Signup",
         "parameters": [
           {
             "in": "body",
-            "name": "user",
-            "description": "User object that needs to be created",
+            "name": "body",
             "required": true,
-            "schema": {
-              "$ref": "#/definitions/UserInput"
-            }
+            "schema": { "$ref": "#/definitions/SignupInput" }
           }
         ],
         "responses": {
           "201": {
-            "description": "User created successfully",
-            "schema": {
-              "type": "object",
-              "properties": {
-                "title": {
-                  "type": "string",
-                  "example": "Success"
-                },
-                "data": {
-                  "$ref": "#/definitions/User"
-                }
-              },
-              "required": ["title", "data"]
-            }
-          },
-          "400": {
-            "description": "Invalid input",
-            "schema": {
-              "$ref": "#/definitions/Error"
-            }
-          },
-          "500": {
-            "description": "Internal server error",
-            "schema": {
-              "$ref": "#/definitions/Error"
-            }
+            "description": "Signup accepted",
+            "schema": { "$ref": "#/definitions/MessageResponse" }
           }
         }
       }
     },
-    "/users/{id}": {
-      "get": {
-        "tags": ["users"],
-        "summary": "Get user by ID",
-        "description": "Returns a single user",
-        "operationId": "getUser",
+    "/auth/signin": {
+      "post": {
+        "tags": ["Auth"],
+        "summary": "Authenticate user",
         "parameters": [
           {
-            "name": "id",
-            "in": "path",
-            "description": "ID of user to return",
+            "in": "body",
+            "name": "body",
             "required": true,
-            "type": "string"
+            "schema": { "$ref": "#/definitions/SigninInput" }
           }
         ],
         "responses": {
           "200": {
+            "description": "Authenticated",
+            "schema": { "$ref": "#/definitions/SigninResponse" }
+          }
+        }
+      }
+    },
+    "/user": {
+      "get": {
+        "tags": ["Users"],
+        "summary": "Get current authenticated user",
+        "security": [{ "Bearer": [] }],
+        "responses": {
+          "200": {
             "description": "Successful operation",
-            "schema": {
-              "type": "object",
-              "properties": {
-                "title": {
-                  "type": "string",
-                  "example": "Success"
-                },
-                "data": {
-                  "$ref": "#/definitions/User"
-                }
-              },
-              "required": ["title", "data"]
-            }
-          },
-          "404": {
-            "description": "User not found",
-            "schema": {
-              "$ref": "#/definitions/Error"
-            }
-          },
-          "500": {
-            "description": "Internal server error",
-            "schema": {
-              "$ref": "#/definitions/Error"
-            }
+            "schema": { "$ref": "#/definitions/User" }
           }
         }
       }
     },
     "/restaurants": {
       "get": {
-        "tags": ["restaurants"],
+        "tags": ["Restaurants"],
         "summary": "List all restaurants",
-        "description": "Returns a list of restaurants",
-        "operationId": "listRestaurants",
+        "parameters": [
+          { "name": "page", "in": "query", "type": "integer" },
+          { "name": "page_size", "in": "query", "type": "integer" },
+          { "name": "q", "in": "query", "type": "string" }
+        ],
         "responses": {
           "200": {
             "description": "Successful operation",
-            "schema": {
-              "type": "object",
-              "properties": {
-                "title": {
-                  "type": "string",
-                  "example": "Success"
-                },
-                "data": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/definitions/Restaurant"
-                  }
-                }
-              },
-              "required": ["title", "data"]
-            }
-          },
-          "500": {
-            "description": "Internal server error",
-            "schema": {
-              "$ref": "#/definitions/Error"
-            }
-          }
-        }
-      },
-      "post": {
-        "tags": ["restaurants"],
-        "summary": "Create a new restaurant",
-        "description": "Adds a new restaurant to the system",
-        "operationId": "createRestaurant",
-        "security": [
-          {
-            "Bearer": []
-          }
-        ],
-        "parameters": [
-          {
-            "in": "body",
-            "name": "restaurant",
-            "description": "Restaurant object that needs to be created",
-            "required": true,
-            "schema": {
-              "$ref": "#/definitions/RestaurantInput"
-            }
-          }
-        ],
-        "responses": {
-          "201": {
-            "description": "Restaurant created successfully",
-            "schema": {
-              "type": "object",
-              "properties": {
-                "title": {
-                  "type": "string",
-                  "example": "Success"
-                },
-                "data": {
-                  "$ref": "#/definitions/Restaurant"
-                }
-              },
-              "required": ["title", "data"]
-            }
-          },
-          "400": {
-            "description": "Invalid input",
-            "schema": {
-              "$ref": "#/definitions/Error"
-            }
-          },
-          "401": {
-            "description": "Unauthorized",
-            "schema": {
-              "$ref": "#/definitions/Error"
-            }
-          },
-          "500": {
-            "description": "Internal server error",
-            "schema": {
-              "$ref": "#/definitions/Error"
-            }
+            "schema": { "$ref": "#/definitions/RestaurantsListResponse" }
           }
         }
       }
     },
     "/menus": {
       "get": {
-        "tags": ["menus"],
-        "summary": "List menu items",
-        "description": "Returns a paginated list of menu items with optional filters",
-        "operationId": "listMenus",
+        "tags": ["Menus"],
+        "summary": "List all menu items",
         "parameters": [
-          { "name": "page", "in": "query", "type": "integer", "default": 1 },
-          {
-            "name": "page_size",
-            "in": "query",
-            "type": "integer",
-            "default": 20
-          },
-          { "name": "q", "in": "query", "type": "string" },
           { "name": "restaurant_id", "in": "query", "type": "string" },
-          { "name": "min_price", "in": "query", "type": "number" },
-          { "name": "max_price", "in": "query", "type": "number" }
+          { "name": "min_price", "in": "query", "type": "number" }
         ],
         "responses": {
           "200": {
             "description": "Successful operation",
             "schema": { "$ref": "#/definitions/MenusListResponse" }
-          },
-          "500": {
-            "description": "Internal server error",
-            "schema": { "$ref": "#/definitions/Error" }
           }
         }
-      },
+      }
+    },
+    "/orders": {
       "post": {
-        "tags": ["menus"],
-        "summary": "Create a menu item",
-        "description": "Adds a new item to a restaurant's menu",
-        "operationId": "createMenu",
+        "tags": ["Orders"],
+        "summary": "Create a new order",
         "security": [{ "Bearer": [] }],
         "parameters": [
           {
             "in": "body",
-            "name": "menu",
-            "description": "Menu object to create",
+            "name": "body",
             "required": true,
-            "schema": { "$ref": "#/definitions/MenuInput" }
+            "schema": { "$ref": "#/definitions/CreateOrderInput" }
           }
         ],
         "responses": {
           "201": {
-            "description": "Menu item created",
-            "schema": {
-              "type": "object",
-              "properties": {
-                "title": { "type": "string" },
-                "data": { "$ref": "#/definitions/Menu" }
-              }
-            }
-          },
-          "400": { "description": "Invalid input" },
-          "401": { "description": "Unauthorized" }
-        }
-      }
-    },
-    "/menus/{id}": {
-      "get": {
-        "tags": ["menus"],
-        "summary": "Get menu item by ID",
-        "operationId": "getMenu",
-        "parameters": [
-          { "name": "id", "in": "path", "required": true, "type": "string" }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful operation",
-            "schema": {
-              "type": "object",
-              "properties": {
-                "data": { "$ref": "#/definitions/Menu" }
-              }
-            }
+            "description": "Order created",
+            "schema": { "$ref": "#/definitions/OrderResponse" }
           }
         }
       },
-      "patch": {
-        "tags": ["menus"],
-        "summary": "Update menu item",
-        "operationId": "updateMenu",
+      "get": {
+        "tags": ["Orders"],
+        "summary": "List user's orders",
+        "security": [{ "Bearer": [] }],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "schema": { "$ref": "#/definitions/UserOrdersResponse" }
+          }
+        }
+      }
+    },
+    "/payments/initiate": {
+      "post": {
+        "tags": ["Payments"],
+        "summary": "Initiate a payment",
         "security": [{ "Bearer": [] }],
         "parameters": [
-          { "name": "id", "in": "path", "required": true, "type": "string" },
           {
             "in": "body",
-            "name": "menu",
-            "schema": { "$ref": "#/definitions/UpdateMenuInput" }
-          }
-        ],
-        "responses": {
-          "200": { "description": "Menu item updated" },
-          "401": { "description": "Unauthorized" }
-        }
-      }
-    },
-    "/menus/upload-url": {
-      "get": {
-        "tags": ["menus"],
-        "summary": "Get presigned URL for upload",
-        "description": "Generates an AWS S3 presigned URL for direct client-side upload to reduce latency.",
-        "operationId": "getUploadURL",
-        "security": [{ "Bearer": [] }],
-        "parameters": [
-          {
-            "name": "filename",
-            "in": "query",
+            "name": "body",
             "required": true,
-            "type": "string"
-          },
-          {
-            "name": "content_type",
-            "in": "query",
-            "required": true,
-            "type": "string"
+            "schema": { "$ref": "#/definitions/InitiatePaymentRequest" }
           }
         ],
         "responses": {
           "200": {
-            "description": "Presigned URL generated",
-            "schema": {
-              "type": "object",
-              "properties": {
-                "title": { "type": "string" },
-                "data": {
-                  "type": "object",
-                  "properties": {
-                    "upload_url": { "type": "string" },
-                    "public_url": { "type": "string" }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/menus/upload": {
-      "post": {
-        "tags": ["menus"],
-        "summary": "Direct upload to server",
-        "description": "Fallback mechanism for uploading files directly to the server (multipart/form-data).",
-        "operationId": "uploadMedia",
-        "security": [{ "Bearer": [] }],
-        "consumes": ["multipart/form-data"],
-        "parameters": [
-          { "name": "file", "in": "formData", "type": "file", "required": true }
-        ],
-        "responses": {
-          "200": {
-            "description": "Upload successful",
-            "schema": {
-              "type": "object",
-              "properties": {
-                "title": { "type": "string" },
-                "data": {
-                  "type": "object",
-                  "properties": {
-                    "url": { "type": "string" }
-                  }
-                }
-              }
-            }
+            "description": "Payment initiated",
+            "schema": { "$ref": "#/definitions/InitiatePaymentResponse" }
           }
         }
       }
     }
   },
   "definitions": {
-    "User": {
-      "type": "object",
-      "properties": {
-        "id": { "type": "string", "format": "uuid" },
-        "name": { "type": "string" },
-        "email": { "type": "string", "format": "email" },
-        "created_at": { "type": "string", "format": "date-time" },
-        "updated_at": { "type": "string", "format": "date-time" }
-      },
-      "required": ["id", "name", "email"]
-    },
-    "UserInput": {
-      "type": "object",
-      "properties": {
-        "name": { "type": "string", "minLength": 2, "maxLength": 50 },
-        "email": { "type": "string", "format": "email" },
-        "password": { "type": "string", "format": "password", "minLength": 8 }
-      },
-      "required": ["name", "email", "password"]
-    },
-    "Restaurant": {
-      "type": "object",
-      "properties": {
-        "id": { "type": "string", "format": "uuid" },
-        "name": { "type": "string" },
-        "description": { "type": "string" },
-        "address": { "type": "string" },
-        "cuisine_type": { "type": "string" },
-        "rating": {
-          "type": "number",
-          "format": "float",
-          "minimum": 0,
-          "maximum": 5
-        },
-        "created_at": { "type": "string", "format": "date-time" },
-        "updated_at": { "type": "string", "format": "date-time" }
-      },
-      "required": ["id", "name", "address"]
-    },
-    "RestaurantInput": {
-      "type": "object",
-      "properties": {
-        "name": { "type": "string", "minLength": 2, "maxLength": 100 },
-        "description": { "type": "string", "maxLength": 500 },
-        "address": { "type": "string", "minLength": 5, "maxLength": 200 },
-        "cuisine_type": { "type": "string" }
-      },
-      "required": ["name", "address"]
-    },
-    "Menu": {
-      "type": "object",
-      "properties": {
-        "id": { "type": "string", "format": "uuid" },
-        "name": { "type": "string" },
-        "description": { "type": "string" },
-        "price": { "type": "number" },
-        "image_urls": { "type": "array", "items": { "type": "string" } },
-        "video_url": { "type": "string" },
-        "restaurant_id": { "type": "string", "format": "uuid" },
-        "is_available": { "type": "boolean" },
-        "prep_time_minutes": { "type": "integer" },
-        "calories": { "type": "integer" },
-        "created_at": { "type": "string", "format": "date-time" },
-        "updated_at": { "type": "string", "format": "date-time" }
-      }
-    },
-    "MenuInput": {
-      "type": "object",
-      "properties": {
-        "name": { "type": "string" },
-        "description": { "type": "string" },
-        "price": { "type": "number" },
-        "image_urls": { "type": "array", "items": { "type": "string" } },
-        "video_url": { "type": "string" },
-        "restaurant_id": { "type": "string" },
-        "is_available": { "type": "boolean" },
-        "prep_time_minutes": { "type": "integer" },
-        "calories": { "type": "integer" }
-      },
-      "required": ["name", "price", "restaurant_id"]
-    },
-    "UpdateMenuInput": {
-      "type": "object",
-      "properties": {
-        "name": { "type": "string" },
-        "description": { "type": "string" },
-        "price": { "type": "number" },
-        "image_urls": { "type": "array", "items": { "type": "string" } },
-        "video_url": { "type": "string" },
-        "is_available": { "type": "boolean" },
-        "prep_time_minutes": { "type": "integer" },
-        "calories": { "type": "integer" }
-      }
-    },
-    "MenusListResponse": {
-      "type": "object",
-      "properties": {
-        "data": { "type": "array", "items": { "$ref": "#/definitions/Menu" } },
-        "meta": {
-          "type": "object",
-          "properties": {
-            "page": { "type": "integer" },
-            "page_size": { "type": "integer" },
-            "total": { "type": "integer" },
-            "total_pages": { "type": "integer" }
-          }
-        }
-      }
-    },
     "Error": {
       "type": "object",
       "properties": {
         "title": { "type": "string" },
         "message": { "type": "string" }
-      },
-      "required": ["title", "message"]
-    }
-  },
-  "tags": [
-    { "name": "users", "description": "Operations about users" },
-    { "name": "restaurants", "description": "Operations about restaurants" },
-    {
-      "name": "menus",
-      "description": "Operations about menu items and media uploads"
+      }
     },
-    { "name": "auth", "description": "Authentication operations" }
-  ]
+    "MessageResponse": {
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "message": { "type": "string" }
+      }
+    },
+    "User": {
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "format": "uuid" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "role": { "type": "string" }
+      }
+    },
+    "OrderResponse": {
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "format": "uuid" },
+        "total_amount": { "type": "number" },
+        "status": { "type": "string" }
+      }
+    },
+    "CreateOrderInput": {
+      "type": "object",
+      "required": ["restaurant_id", "items"],
+      "properties": {
+        "restaurant_id": { "type": "string" },
+        "items": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/CreateOrderItemInput" }
+        }
+      }
+    },
+    "CreateOrderItemInput": {
+      "type": "object",
+      "properties": {
+        "menu_id": { "type": "string" },
+        "quantity": { "type": "integer" }
+      }
+    },
+    "InitiatePaymentRequest": {
+      "type": "object",
+      "required": ["order_id", "provider"],
+      "properties": {
+        "order_id": { "type": "string" },
+        "provider": { "type": "string" },
+        "callback_url": { "type": "string" }
+      }
+    },
+    "InitiatePaymentResponse": {
+      "type": "object",
+      "properties": {
+        "payment_id": { "type": "string" },
+        "authorization_url": { "type": "string" },
+        "reference": { "type": "string" }
+      }
+    },
+    "UserOrdersResponse": {
+      "type": "object",
+      "properties": {
+        "orders": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/OrderResponse" }
+        }
+      }
+    },
+    "RestaurantsListResponse": {
+      "type": "object",
+      "properties": {
+        "data": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/Restaurant" }
+        }
+      }
+    },
+    "Restaurant": {
+      "type": "object",
+      "properties": { "id": { "type": "string" }, "name": { "type": "string" } }
+    },
+    "MenusListResponse": {
+      "type": "object",
+      "properties": {
+        "data": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/MenuResponse" }
+        }
+      }
+    },
+    "MenuResponse": {
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "price": { "type": "number" }
+      }
+    }
+  }
 }

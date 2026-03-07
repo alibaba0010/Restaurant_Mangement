@@ -18,6 +18,18 @@ const tags = `
 		{
 			"name": "Restaurants",
 			"description": "Operations about restaurants"
+		},
+		{
+			"name": "Menus",
+			"description": "Operations about menu items"
+		},
+		{
+			"name": "Orders",
+			"description": "Order management operations"
+		},
+		{
+			"name": "Payments",
+			"description": "Payment processing and webhooks"
 		}
 	]
 `

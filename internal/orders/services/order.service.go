@@ -18,9 +18,26 @@ import (
 
 	"github.com/alibaba0010/postgres-api/internal/utils"
 
+	"github.com/alibaba0010/postgres-api/internal/common/events"
+	"github.com/alibaba0010/postgres-api/internal/common/logger"
+	"go.uber.org/zap"
+
 	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
 )
+
+func (s *OrderService) publishOrderEvent(ctx context.Context, orderID string, topic string) {
+	producer := events.GetGlobalProducer()
+	if producer == nil {
+		return
+	}
+
+	event := NewOrderEvent(orderID, topic)
+
+	if err := producer.Publish(ctx, event); err != nil {
+		logger.Log.Error("Failed to publish order event", zap.String("topic", topic), zap.Error(err))
+	}
+}
 
 // OrderService implements the business logic for customer orders,
 // managing the lifecycle from creation to status updates.
@@ -46,6 +63,25 @@ type OrderServiceInterface interface {
 	GetUserOrders(ctx context.Context, userID string, limit int, cursor string) ([]dto.OrderResponse, string, bool, *errors.AppError)
 	UpdateOrderStatus(ctx context.Context, id string, status string, user commonDto.AuthenticatedUser) *errors.AppError
 }
+// CalculateServiceCharge computes the service charge based on the subtotal.
+// Business Rule: 10% on orders less than 100, 5% on orders 100 or more.
+func CalculateServiceCharge(subtotal decimal.Decimal) (decimal.Decimal, string) {
+	threshold := decimal.NewFromInt(100)
+	var rate decimal.Decimal
+	var percentLabel string
+
+	if subtotal.LessThan(threshold) {
+		rate = decimal.NewFromFloat(0.10)
+		percentLabel = "10%"
+	} else {
+		rate = decimal.NewFromFloat(0.05)
+		percentLabel = "5%"
+	}
+
+	charge := subtotal.Mul(rate).Round(2)
+	return charge, percentLabel
+}
+
 // MapOrderToResponse transforms a database Order model into a DTO response.
 // This ensures internal database structures (like UUIDs or timestamps) are correctly 
 // formatted for the API consumers.
@@ -61,16 +97,25 @@ func (s *OrderService) MapOrderToResponse(o *models.Order) dto.OrderResponse {
 		}
 	}
 
+	// Determine service charge percent label for display
+	_, percentLabel := CalculateServiceCharge(o.Subtotal)
+
 	return dto.OrderResponse{
-		ID:              o.ID.String(),
-		UserID:          o.UserID.String(),
-		RestaurantID:    o.RestaurantID.String(),
-		TotalAmount:     o.TotalAmount,
-		Status:          string(o.Status),
-		DeliveryAddress: o.DeliveryAddress,
-		CreatedAt:       o.CreatedAt.Format(time.RFC3339),
-		UpdatedAt:       o.UpdatedAt.Format(time.RFC3339),
-		Items:           items,
+		ID:                   o.ID.String(),
+		UserID:               o.UserID.String(),
+		RestaurantID:         o.RestaurantID.String(),
+		OrderType:            string(o.OrderType),
+		Subtotal:             o.Subtotal,
+		ServiceCharge:        o.ServiceCharge,
+		ServiceChargePercent: percentLabel,
+		TotalAmount:          o.TotalAmount,
+		Currency:             o.Currency,
+		Status:               string(o.Status),
+		PaymentStatus:        string(o.PaymentStatus),
+		DeliveryAddress:      o.DeliveryAddress,
+		CreatedAt:            o.CreatedAt.Format(time.RFC3339),
+		UpdatedAt:            o.UpdatedAt.Format(time.RFC3339),
+		Items:                items,
 	}
 }
 
@@ -151,7 +196,12 @@ func (s *OrderService) CreateOrder(ctx context.Context, userID string, input dto
 		totalAmount = totalAmount.Add(itemTotal)
 	}
 
-	order.TotalAmount = totalAmount
+	// Calculate service charge: 10% for subtotal < 100, 5% for subtotal >= 100
+	serviceCharge, _ := CalculateServiceCharge(totalAmount)
+
+	order.Subtotal = totalAmount
+	order.ServiceCharge = serviceCharge
+	order.TotalAmount = totalAmount.Add(serviceCharge)
 	order.OrderItems = orderItems
 
 	// Step 5: Persist order and update inventory within a database transaction.
@@ -209,6 +259,9 @@ func (s *OrderService) CreateOrder(ctx context.Context, userID string, input dto
 		return nil, errors.InternalError(err)
 	}
 
+	// Publish Event
+	s.publishOrderEvent(ctx, order.ID.String(), "order.created")
+
 	resp := s.MapOrderToResponse(order)
 	return &resp, nil
 }
@@ -253,8 +306,8 @@ func (s *OrderService) UpdateOrderStatus(ctx context.Context, id string, status 
 
 	// Persist status change within a transaction for data integrity and lifecycle consistency.
 	err := s.orderRepo.RunInTx(ctx, func(ctx context.Context, tx bun.Tx) error {
-		// Step 1: Fetch current order state within the transaction.
-		order, err := s.orderRepo.FindByID(ctx, id)
+		// Step 1: Fetch current order state within the transaction and lock the row to prevent race conditions.
+		order, err := s.orderRepo.FindByIDWithLock(ctx, tx, id)
 		if err != nil {
 			return err
 		}
@@ -296,5 +349,9 @@ func (s *OrderService) UpdateOrderStatus(ctx context.Context, id string, status 
 		}
 		return errors.InternalError(err)
 	}
+
+	// Publish Event
+	s.publishOrderEvent(ctx, id, "order.status_updated")
+
 	return nil
 }

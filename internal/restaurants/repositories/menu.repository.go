@@ -32,9 +32,11 @@ type MenuRespository interface {
 	FindByIDs(ctx context.Context, ids []string) ([]models.Menu, error)
 	FindAll(ctx context.Context, limit int, cursorStr string, queryStr string, restaurantID string, categoryID string, tags []string, minPrice, maxPrice *decimal.Decimal, isAvailable *bool, sortBy, order string) ([]models.Menu, string, bool, int64, error)
 	FindByIDsWithLock(ctx context.Context, db bun.IDB, ids []string) ([]models.Menu, error)
+	FindByIDWithLock(ctx context.Context, db bun.IDB, id string) (*models.Menu, error)
 	Update(ctx context.Context, db bun.IDB, menu *models.Menu, columns ...string) error
 	UpdateStock(ctx context.Context, db bun.IDB, menuID uuid.UUID, quantityChange int) error
 	Delete(ctx context.Context, id string) error
+	RunInTx(ctx context.Context, fn func(context.Context, bun.Tx) error) error
 }
 // Create inserts a new menu item and its category mappings within a transaction
 func (r *MenuRepository) Create(ctx context.Context, menu *models.Menu) error {
@@ -124,6 +126,33 @@ func (r *MenuRepository) FindByIDsWithLock(ctx context.Context, db bun.IDB, ids 
 		return nil, err
 	}
 	return menus, nil
+}
+
+// FindByIDWithLock retrieves a single menu item by ID with a row-level lock (FOR UPDATE).
+func (r *MenuRepository) FindByIDWithLock(ctx context.Context, db bun.IDB, id string) (*models.Menu, error) {
+	if db == nil {
+		db = r.db
+	}
+	menu := new(models.Menu)
+	err := db.NewSelect().
+		Model(menu).
+		Relation("Categories").
+		Where("menu.id = ?", id).
+		For("UPDATE").
+		Scan(ctx)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, err
+		}
+		logger.Log.Error("failed to find and lock menu item by id", zap.String("id", id), zap.Error(err))
+		return nil, err
+	}
+	return menu, nil
+}
+
+// RunInTx executes a function within a database transaction.
+func (r *MenuRepository) RunInTx(ctx context.Context, fn func(context.Context, bun.Tx) error) error {
+	return r.db.RunInTx(ctx, &sql.TxOptions{}, fn)
 }
 
 // FindAll retrieves menu items with various filters and pagination
@@ -255,51 +284,74 @@ func (r *MenuRepository) FindAll(ctx context.Context, limit int, cursorStr strin
 
 // Update updates an existing menu item and its category mappings
 func (r *MenuRepository) Update(ctx context.Context, db bun.IDB, menu *models.Menu, columns ...string) error {
-	if db == nil {
-		db = r.db
-	}
+	var tx bun.Tx
+	var isPassedTx bool
 
-	err := r.db.RunInTx(ctx, &sql.TxOptions{}, func(ctx context.Context, tx bun.Tx) error {
-		menu.UpdatedAt = time.Now()
-		updateQuery := tx.NewUpdate().Model(menu).WherePK()
-		if len(columns) > 0 {
-			updateQuery = updateQuery.Column(columns...)
-		}
-		_, err := updateQuery.Exec(ctx)
+	switch passedDB := db.(type) {
+	case bun.Tx:
+		tx = passedDB
+		isPassedTx = true
+	case *bun.DB:
+		var err error
+		tx, err = passedDB.BeginTx(ctx, &sql.TxOptions{})
 		if err != nil {
 			return err
 		}
-
-		// If Categories are provided in the model's CategoryIDs field (populated by service)
-		// We sync the join table.
-		if len(menu.CategoryIDs) > 0 || len(columns) == 0 { // len(columns)==0 means full update
-			// Delete existing joins
-			_, err = tx.NewDelete().Model((*models.MenuCategoryJoin)(nil)).Where("menu_id = ?", menu.ID).Exec(ctx)
-			if err != nil {
-				return err
-			}
-
-			if len(menu.CategoryIDs) > 0 {
-				joins := make([]models.MenuCategoryJoin, len(menu.CategoryIDs))
-				for i, catID := range menu.CategoryIDs {
-					joins[i] = models.MenuCategoryJoin{
-						MenuID:     menu.ID,
-						CategoryID: catID,
-					}
-				}
-				_, err = tx.NewInsert().Model(&joins).Exec(ctx)
-				if err != nil {
-					return err
-				}
-			}
+	default:
+		var err error
+		tx, err = r.db.BeginTx(ctx, &sql.TxOptions{})
+		if err != nil {
+			return err
 		}
-		return nil
-	})
+	}
 
+	defer func() {
+		if !isPassedTx {
+			_ = tx.Rollback()
+		}
+	}()
+
+	menu.UpdatedAt = time.Now()
+	updateQuery := tx.NewUpdate().Model(menu).WherePK()
+	if len(columns) > 0 {
+		updateQuery = updateQuery.Column(columns...)
+	}
+	_, err := updateQuery.Exec(ctx)
 	if err != nil {
 		logger.Log.Error("failed to update menu item", zap.String("id", menu.ID.String()), zap.Error(err))
 		return err
 	}
+
+	// If Categories are provided in the model's CategoryIDs field (populated by service)
+	// We sync the join table.
+	if len(menu.CategoryIDs) > 0 || len(columns) == 0 { // len(columns)==0 means full update
+		// Delete existing joins
+		_, err = tx.NewDelete().Model((*models.MenuCategoryJoin)(nil)).Where("menu_id = ?", menu.ID).Exec(ctx)
+		if err != nil {
+			return err
+		}
+
+		if len(menu.CategoryIDs) > 0 {
+			joins := make([]models.MenuCategoryJoin, len(menu.CategoryIDs))
+			for i, catID := range menu.CategoryIDs {
+				joins[i] = models.MenuCategoryJoin{
+					MenuID:     menu.ID,
+					CategoryID: catID,
+				}
+			}
+			_, err = tx.NewInsert().Model(&joins).Exec(ctx)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	if !isPassedTx {
+		if err := tx.Commit(); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 

@@ -23,24 +23,27 @@ type OrderItemResponse struct {
 }
 
 type OrderResponse struct {
-	ID              string              `json:"id"`
-	UserID          string              `json:"user_id"`
-	RestaurantID    string              `json:"restaurant_id"`
-	OrderType       string              `json:"order_type"`
-	TotalAmount     decimal.Decimal     `json:"total_amount"`
-	Currency        string              `json:"currency"`
-	Status          string              `json:"status"`
-	PaymentStatus   string              `json:"payment_status"`
-	DeliveryAddress string              `json:"delivery_address"`
-	CreatedAt       string              `json:"created_at"`
-	UpdatedAt       string              `json:"updated_at"`
-	ConfirmedAt     *string             `json:"confirmed_at,omitempty"`
-	CompletedAt     *string             `json:"completed_at,omitempty"`
-	Items           []OrderItemResponse `json:"items,omitempty"`
+	ID                  string              `json:"id"`
+	UserID              string              `json:"user_id"`
+	RestaurantID        string              `json:"restaurant_id"`
+	OrderType           string              `json:"order_type"`
+	Subtotal            decimal.Decimal     `json:"subtotal"`
+	ServiceCharge       decimal.Decimal     `json:"service_charge"`
+	ServiceChargePercent string             `json:"service_charge_percent"`
+	TotalAmount         decimal.Decimal     `json:"total_amount"`
+	Currency            string              `json:"currency"`
+	Status              string              `json:"status"`
+	PaymentStatus       string              `json:"payment_status"`
+	DeliveryAddress     string              `json:"delivery_address"`
+	CreatedAt           string              `json:"created_at"`
+	UpdatedAt           string              `json:"updated_at"`
+	ConfirmedAt         *string             `json:"confirmed_at,omitempty"`
+	CompletedAt         *string             `json:"completed_at,omitempty"`
+	Items               []OrderItemResponse `json:"items,omitempty"`
 }
 
 type UpdateOrderStatusInput struct {
-	Status string `json:"status" validate:"required,oneof=pending processing completed cancelled"`
+	Status string `json:"status" validate:"required,oneof=confirmed preparing ready completed cancelled"`
 }
 
 type UserOrdersResponse struct {

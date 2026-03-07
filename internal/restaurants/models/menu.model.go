@@ -19,14 +19,16 @@ type MenuCategory struct {
 	CreatedAt    time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"created_at"`
 	UpdatedAt    time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"updated_at"`
 
-	Menus []*Menu `bun:"rel:many-to-many,join:id=category_id" json:"menus,omitempty"`
+	Menus []*Menu `bun:"m2m:menu_category_joins,join:Category=Menu" json:"menus,omitempty"`
 }
 
 type MenuCategoryJoin struct {
 	bun.BaseModel `bun:"table:menu_category_joins"`
 
 	MenuID     uuid.UUID `bun:"type:uuid,pk"`
+	Menu       *Menu     `bun:"rel:belongs-to,join:menu_id=id"`
 	CategoryID uuid.UUID `bun:"type:uuid,pk"`
+	Category   *MenuCategory `bun:"rel:belongs-to,join:category_id=id"`
 }
 
 type Menu struct {
@@ -36,8 +38,8 @@ type Menu struct {
 	Name            string          `bun:",notnull" json:"name"`
 	Description     string          `bun:",nullzero" json:"description,omitempty"`
 	Price           decimal.Decimal `bun:"type:decimal(10,2),notnull" json:"price"`
-	ImageURLs       []string        `bun:"type:jsonb,nullzero" json:"image_urls,omitempty"`
-	VideoURL        string          `bun:",nullzero" json:"video_url,omitempty"`
+	ImageURLs       []string        `bun:"image_urls,type:jsonb,nullzero" json:"image_urls,omitempty"`
+	VideoURL        string          `bun:"video_url,nullzero" json:"video_url,omitempty"`
 	RestaurantID    uuid.UUID       `bun:"type:uuid,notnull" json:"restaurant_id"`
 	CategoryIDs     []uuid.UUID     `bun:"-" json:"category_ids,omitempty"` // For internal mapping
 	Tags            []string        `bun:"type:jsonb,nullzero" json:"tags,omitempty"`
@@ -56,7 +58,7 @@ type Menu struct {
 	UpdatedAt       time.Time       `bun:",nullzero,notnull,default:current_timestamp" json:"updated_at"`
 	DeletedAt       time.Time       `bun:",soft_delete,nullzero" json:"-"`
 
-	// Relations
+	// // Relations
 	Restaurant *Restaurant     `bun:"rel:belongs-to,join:restaurant_id=id" json:"restaurant,omitempty"`
-	Categories []*MenuCategory `bun:"rel:many-to-many,join:id=menu_id,through:menu_category_joins,source:category_id" json:"categories,omitempty"`
+	Categories []*MenuCategory `bun:"m2m:menu_category_joins,join:Menu=Category" json:"categories,omitempty"`
 }
