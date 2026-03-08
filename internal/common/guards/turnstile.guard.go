@@ -3,17 +3,19 @@ package guards
 import (
 	"net/http"
 	"strings"
+	"go.uber.org/zap"
 
 	"github.com/alibaba0010/postgres-api/internal/common/errors"
+	"github.com/alibaba0010/postgres-api/internal/common/logger"
 	"github.com/alibaba0010/postgres-api/internal/config"
 	"github.com/alibaba0010/postgres-api/internal/utils"
+
 )
 
 // TurnstileMiddleware validates the Cloudflare Turnstile token from request headers
 func TurnstileMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		cfg := config.LoadConfig()
-
 		// Skip verification if disabled or in development (if explicitly set)
 		// For now, we only skip if the secret key is missing.
 		if cfg.TURNSTILE_SECRET_KEY == "" {
@@ -30,10 +32,12 @@ func TurnstileMiddleware(next http.Handler) http.Handler {
 
 		// If token is missing, reject the request
 		if token == "" {
-			errors.ErrorResponse(w, r, errors.BadRequestError("Turnstile verification token is required"))
+			logger.Log.Warn("Turnstile token missing", zap.String("path", r.URL.Path))
+			errors.ErrorResponse(w, r, errors.BadRequestError("Complete The Security Challenge before proceeding"))
 			return
 		}
 
+		logger.Log.Info("Turnstile token received", zap.String("path", r.URL.Path))
 		// Get remote IP safely
 		remoteIP := r.Header.Get("X-Forwarded-For")
 		if remoteIP != "" {
@@ -52,6 +56,7 @@ func TurnstileMiddleware(next http.Handler) http.Handler {
 		}
 
 		if !success {
+			logger.Log.Warn("Turnstile challenge failed", zap.String("path", r.URL.Path), zap.String("remote_ip", remoteIP))
 			errors.ErrorResponse(w, r, errors.ForbiddenError("security challenge failed: possibly a bot"))
 			return
 		}

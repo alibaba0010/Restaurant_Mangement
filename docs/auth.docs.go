@@ -8,7 +8,7 @@ const authPaths = `
 				"Auth"
 			],
 			"summary": "User Signup",
-			"description": "Creates a new user account",
+			"description": "Creates a new user account. Requires Cloudflare Turnstile verification via 'X-Turnstile-Token' or 'cf-turnstile-response' header.",
 			"operationId": "signup",
 			"parameters": [
 				{
@@ -19,6 +19,13 @@ const authPaths = `
 					"schema": {
 						"$ref": "#/definitions/SignupInput"
 					}
+				},
+				{
+					"name": "X-Turnstile-Token",
+					"in": "header",
+					"description": "Cloudflare Turnstile token",
+					"required": false,
+					"type": "string"
 				}
 			],
 			"responses": {
@@ -73,9 +80,12 @@ const authPaths = `
 			"post": {
 				"tags": ["Auth"],
 				"summary": "Resend verification email",
-				"description": "Resends account verification email if a pending verification exists",
+				"description": "Resends account verification email if a pending verification exists. Requires Cloudflare Turnstile verification.",
 				"operationId": "resendVerification",
-				"parameters": [{"in": "body", "name": "body", "required": true, "schema": {"type": "object", "properties": {"email": {"type": "string", "format": "email"}}, "required": ["email"]}}],
+				"parameters": [
+					{"in": "body", "name": "body", "required": true, "schema": {"type": "object", "properties": {"email": {"type": "string", "format": "email"}}, "required": ["email"]}},
+					{"name": "X-Turnstile-Token", "in": "header", "description": "Cloudflare Turnstile token", "required": false, "type": "string"}
+				],
 				"responses": {
 					"200": {"description": "Verification email resent", "schema": {"type": "object", "properties": {"message": {"type": "string"}}}},
 					"400": {"description": "Validation error", "schema": {"$ref": "#/definitions/Error"}},
@@ -116,7 +126,7 @@ const authPaths = `
 		"post": {
 			"tags": ["Auth"],
 			"summary": "Authenticate user",
-			"description": "Authenticates a user and returns a JWT token",
+			"description": "Authenticates a user and returns a JWT token. Requires Cloudflare Turnstile verification.",
 			"operationId": "signin",
 			"parameters": [
 				{
@@ -127,6 +137,13 @@ const authPaths = `
 					"schema": {
 						"$ref": "#/definitions/SigninInput"
 					}
+				},
+				{
+					"name": "X-Turnstile-Token",
+					"in": "header",
+					"description": "Cloudflare Turnstile token",
+					"required": false,
+					"type": "string"
 				}
 			],
 			"responses": {
@@ -142,7 +159,7 @@ const authPaths = `
 		"post": {
 			"tags": ["Auth"],
 			"summary": "Request password reset",
-			"description": "Sends a password reset email to the user",
+			"description": "Sends a password reset email to the user. Requires Cloudflare Turnstile verification.",
 			"operationId": "forgotPassword",
 			"parameters": [
 				{
@@ -150,6 +167,13 @@ const authPaths = `
 					"name": "body",
 					"required": true,
 					"schema": { "$ref": "#/definitions/ForgotPasswordInput" }
+				},
+				{
+					"name": "X-Turnstile-Token",
+					"in": "header",
+					"description": "Cloudflare Turnstile token",
+					"required": false,
+					"type": "string"
 				}
 			],
 			"responses": {

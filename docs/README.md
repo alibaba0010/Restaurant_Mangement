@@ -8,30 +8,38 @@ This directory contains the Swagger/OpenAPI documentation for the Restaurant Man
 
 - **system.go** - System endpoints documentation (e.g., healthcheck)
 
-- **auth.go** - Authentication endpoints documentation (e.g., signup, signin)
+- **auth.docs.go** - Authentication endpoints documentation (e.g., signup, signin)
 
-- **users.go** - User management endpoints documentation (list users, get user by ID)
+- **users.docs.go** - User management endpoints documentation (list users, get user by ID)
 
-- **restaurants.go** - Restaurant management endpoints documentation (list, create restaurants)
+- **restaurants.docs.go** - Restaurant management endpoints documentation (list, create restaurants)
 
-- **menus.go** - Menu management endpoints documentation (list, create, update, delete menus)
+- **menus.docs.go** - Menu management endpoints documentation (list, create, update, delete menus)
 
-- **orders.go** - Order management endpoints documentation (list, create, update, delete orders)
+- **categories.docs.go** - Menu category management endpoints documentation
 
-- **payments.go** - Payment management endpoints documentation
+- **orders.docs.go** - Order management endpoints documentation (list, create, update, delete orders)
+
+- **payments.docs.go** - Payment management endpoints documentation
 
 - **definitions.go** - Data models/schemas used across all endpoints (User, SignupInput, Restaurant, Error, etc.)
 
 - **tags.go** - API tags organization for Swagger UI grouping
+
+- **Performance Testing** - Load testing scripts and reports located in the project root (`load_tester.go`, `LOAD_TEST_REPORT.md`)
 
 ### Order of Documentation
 
 The endpoints are ordered as follows:
 
 1. **system** - `/healthcheck`
-2. **Auth** - `/auth/signup`
-3. **Users** - `/users`, `/users/{id}`
+2. **Auth** - `/auth/signup`, `/auth/signin`
+3. **Users** - `/user`, `/user/users`, `/user/{id}`
 4. **Restaurants** - `/restaurants`
+5. **Menus** - `/menus`
+6. **Categories** - `/categories`
+7. **Orders** - `/orders`
+8. **Payments** - `/payments`
 
 ### How to Update
 
@@ -44,11 +52,24 @@ When adding or modifying endpoints:
 
 ### View Documentation
 
-Once running, access the Swagger UI at:
+Once the server is running, access the Interactive Swagger UI at:
 
 ```
-http://localhost:3000/swagger/
+http://localhost:8001/swagger/index.html
 ```
+
+### Performance & Load Testing
+
+We maintain a custom load testing suite to ensure the API's resilience and verify rate-limiting policies.
+
+1. **Run Load Test**: `go run load_tester.go` (or `load_test.go`)
+2. **View Report**: [LOAD_TEST_REPORT.md](../LOAD_TEST_REPORT.md) in the project root.
+
+The report includes:
+
+- Throughput (Requests/sec)
+- Latency Percentiles (P50, P90, P99)
+- Success Rate (verifying rate-limit effectiveness)
 
 ### Note
 

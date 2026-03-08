@@ -40,9 +40,7 @@ func CORS(allowedOrigin string) func(http.Handler) http.Handler {
 			} else if origin == allowedOrigin {
 				shouldAllow = true
 			} else {
-				// Dev helper: if both are localhost (ignoring scheme/port for fuzzy match in dev)
-				// This prevents strict port mismatch issues during local dev (e.g. 3000 vs 8001 vs 8001)
-				// In production, allowedOrigin should be exact.
+				// Dev helper: both must be some form of localhost
 				if isLocalhost(allowedOrigin) && isLocalhost(origin) {
 					shouldAllow = true
 				}
@@ -71,7 +69,7 @@ func CORS(allowedOrigin string) func(http.Handler) http.Handler {
 			}
 
 			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
-			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With, X-Turnstile-Token, cf-turnstile-response")
 			w.Header().Set("Access-Control-Allow-Credentials", "true")
 
 			if r.Method == http.MethodOptions {

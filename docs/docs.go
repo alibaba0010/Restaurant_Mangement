@@ -14,7 +14,7 @@ const docTemplate = `{
     "host": "localhost:8001",
     "basePath": "/api/v1",
     "paths": {
-` + systemPaths + authPaths + usersPaths + restaurantsPaths + menusPaths + ordersPaths + paymentsPaths + `
+` + systemPaths + authPaths + usersPaths + restaurantsPaths + menusPaths + categoryPaths + ordersPaths + paymentsPaths + `
     },
     "securityDefinitions": {
         "Bearer": {

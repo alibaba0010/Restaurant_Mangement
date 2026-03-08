@@ -303,6 +303,52 @@ const definitions = `
 				"reference": { "type": "string" },
 				"created_at": { "type": "string", "format": "date-time" }
 			}
+		},
+		"CursorMeta": {
+			"type": "object",
+			"properties": {
+				"next_cursor": { "type": "string" },
+				"has_more": { "type": "boolean" },
+				"total": { "type": "integer" }
+			}
+		},
+		"CreateCategoryInput": {
+			"type": "object",
+			"properties": {
+				"restaurant_id": { "type": "string", "format": "uuid" },
+				"name": { "type": "string", "minLength": 2, "maxLength": 100 },
+				"description": { "type": "string", "maxLength": 500 },
+				"sort_order": { "type": "integer", "minimum": 0 }
+			},
+			"required": ["restaurant_id", "name"]
+		},
+		"UpdateCategoryInput": {
+			"type": "object",
+			"properties": {
+				"name": { "type": "string", "minLength": 2, "maxLength": 100 },
+				"description": { "type": "string", "maxLength": 500 },
+				"sort_order": { "type": "integer", "minimum": 0 }
+			}
+		},
+		"CategoryResponse": {
+			"type": "object",
+			"properties": {
+				"id": { "type": "string", "format": "uuid" },
+				"restaurant_id": { "type": "string", "format": "uuid" },
+				"name": { "type": "string" },
+				"description": { "type": "string" },
+				"sort_order": { "type": "integer" },
+				"created_at": { "type": "string", "format": "date-time" },
+				"updated_at": { "type": "string", "format": "date-time" },
+				"menus": { "type": "array", "items": { "$ref": "#/definitions/MenuResponse" } }
+			}
+		},
+		"CategoryListResponse": {
+			"type": "object",
+			"properties": {
+				"data": { "type": "array", "items": { "$ref": "#/definitions/CategoryResponse" } },
+				"meta": { "$ref": "#/definitions/CursorMeta" }
+			}
 		}
 	}
 

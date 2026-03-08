@@ -30,6 +30,10 @@ const tags = `
 		{
 			"name": "Payments",
 			"description": "Payment processing and webhooks"
+		},
+		{
+			"name": "Categories",
+			"description": "Operations about menu categories"
 		}
 	]
 `

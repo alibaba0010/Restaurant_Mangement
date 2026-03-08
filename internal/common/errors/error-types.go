@@ -30,7 +30,7 @@ func BadRequestError(message string) *AppError {
 }
 
 func DuplicateError(field string) *AppError {
-	return New("Duplicate Value", "Duplicate value entered for "+field+" field, please choose another value", http.StatusBadRequest, nil)
+	return New("Duplicate Value", ""+field+" already exists", http.StatusBadRequest, nil)
 }
 
 func NotFoundError(message string) *AppError {
