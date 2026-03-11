@@ -60,9 +60,9 @@ func (c *PaymentController) InitiatePayment(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	resp, err := c.service.InitiatePayment(r.Context(), &req, userID)
-	if err != nil {
-		errors.ErrorResponse(w, r, errors.ValidationError(err.Error()))
+	resp, appErr := c.service.InitiatePayment(r.Context(), &req, userID)
+	if appErr != nil {
+		errors.ErrorResponse(w, r, appErr)
 		return
 	}
 
@@ -90,9 +90,9 @@ func (c *PaymentController) VerifyPayment(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	resp, err := c.service.VerifyPayment(r.Context(), reference, userID)
-	if err != nil {
-		errors.ErrorResponse(w, r, errors.ValidationError(err.Error()))
+	resp, appErr := c.service.VerifyPayment(r.Context(), reference, userID)
+	if appErr != nil {
+		errors.ErrorResponse(w, r, appErr)
 		return
 	}
 
@@ -119,9 +119,9 @@ func (c *PaymentController) WebhookHandler(w http.ResponseWriter, r *http.Reques
 		}
 	}
 
-	if err := c.service.HandleWebhook(r.Context(), providerEnum, body, headers); err != nil {
-		// Log error and return 500 for processing errors so provider retries (Issue 2.3)
-		errors.ErrorResponse(w, r, errors.InternalError(err))
+	if appErr := c.service.HandleWebhook(r.Context(), providerEnum, body, headers); appErr != nil {
+		// Log error and return status from appErr (usually 500 for processing errors so provider retries)
+		errors.ErrorResponse(w, r, appErr)
 		return
 	}
 

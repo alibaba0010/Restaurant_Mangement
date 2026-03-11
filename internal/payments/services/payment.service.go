@@ -3,7 +3,6 @@ package services
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -20,29 +19,32 @@ import (
 	"github.com/alibaba0010/postgres-api/internal/payments/models"
 	"github.com/alibaba0010/postgres-api/internal/payments/providers"
 	"github.com/alibaba0010/postgres-api/internal/payments/repositories"
+	restRepo "github.com/alibaba0010/postgres-api/internal/restaurants/repositories"
+	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
 	"github.com/uptrace/bun"
 	"go.uber.org/zap"
 
-	"github.com/google/uuid"
+	apierrors "github.com/alibaba0010/postgres-api/internal/common/errors"
 )
 
 type PaymentService interface {
-	InitiatePayment(ctx context.Context, req *dto.InitiatePaymentRequest, userID uuid.UUID) (*dto.InitiatePaymentResponse, error)
-	VerifyPayment(ctx context.Context, reference string, userID uuid.UUID) (*dto.PaymentResponse, error)
-	HandleWebhook(ctx context.Context, provider types.PaymentProvider, payload []byte, headers map[string]string) error
+	InitiatePayment(ctx context.Context, req *dto.InitiatePaymentRequest, userID uuid.UUID) (*dto.InitiatePaymentResponse, *apierrors.AppError)
+	VerifyPayment(ctx context.Context, reference string, userID uuid.UUID) (*dto.PaymentResponse, *apierrors.AppError)
+	HandleWebhook(ctx context.Context, provider types.PaymentProvider, payload []byte, headers map[string]string) *apierrors.AppError
 }
 
 type paymentService struct {
 	repo           *repositories.PaymentRepository
 	settlementRepo *repositories.SettlementRepository
 	orderRepo      *orderRepo.OrderRepository
+	menuRepo       *restRepo.MenuRepository
 	producer       events.Producer
 	providers      map[types.PaymentProvider]providers.PaymentProvider
 	cfg            config.Config
 }
 
-func NewPaymentService(producer events.Producer, orderRepo *orderRepo.OrderRepository) PaymentService {
+func NewPaymentService(producer events.Producer, orderRepo *orderRepo.OrderRepository, menuRepo *restRepo.MenuRepository) PaymentService {
 	cfg := config.LoadConfig()
 	provMap := providers.InitProviders(cfg)
 	repo := repositories.NewPaymentRepository(database.DB)
@@ -52,30 +54,31 @@ func NewPaymentService(producer events.Producer, orderRepo *orderRepo.OrderRepos
 		repo:           repo,
 		settlementRepo: settleRepo,
 		orderRepo:      orderRepo,
+		menuRepo:       menuRepo,
 		producer:       producer,
 		providers:      provMap,
 		cfg:            cfg,
 	}
 }
 
-func (s *paymentService) InitiatePayment(ctx context.Context, req *dto.InitiatePaymentRequest, userID uuid.UUID) (*dto.InitiatePaymentResponse, error) {
+func (s *paymentService) InitiatePayment(ctx context.Context, req *dto.InitiatePaymentRequest, userID uuid.UUID) (*dto.InitiatePaymentResponse, *apierrors.AppError) {
 	userEmail, err := guards.GetUserEmail(ctx, userID.String())
 	if err != nil {
-		return nil, fmt.Errorf("failed to get user email: %w", err)
+		return nil, apierrors.InternalError(fmt.Errorf("failed to get user email: %w", err))
 	}
 	// 1. Get Order (Issue 1.5: use Repository)
 	order, err := s.orderRepo.FindByID(ctx, req.OrderID.String())
 	if err != nil {
-		return nil, fmt.Errorf("order not found: %w", err)
+		return nil, apierrors.NotFoundError("order not found")
 	}
 
 	if order.UserID != userID {
-		return nil, errors.New("unauthorized: order does not belong to user")
+		return nil, apierrors.ForbiddenError("order does not belong to you")
 	}
 
 	provider, ok := s.providers[req.Provider]
 	if !ok {
-		return nil, fmt.Errorf("payment provider %s not configured", req.Provider)
+		return nil, apierrors.ValidationError(fmt.Sprintf("payment provider %s not configured", req.Provider))
 	}
 
 	reference := fmt.Sprintf("PAY-%s-%d", uuid.New().String()[:8], time.Now().Unix())
@@ -92,7 +95,7 @@ func (s *paymentService) InitiatePayment(ctx context.Context, req *dto.InitiateP
 	}
 
 	if err := s.repo.Create(ctx, payment); err != nil {
-		return nil, fmt.Errorf("failed to create payment record: %w", err)
+		return nil, apierrors.InternalError(fmt.Errorf("failed to create payment record: %w", err))
 	}
 
 	initReq := &providers.InitializeRequest{
@@ -109,7 +112,7 @@ func (s *paymentService) InitiatePayment(ctx context.Context, req *dto.InitiateP
 
 	initResp, err := provider.InitializePayment(ctx, initReq)
 	if err != nil {
-		return nil, fmt.Errorf("provider initialization failed: %w", err)
+		return nil, apierrors.InternalError(fmt.Errorf("provider initialization failed: %w", err))
 	}
 
 	if initResp.Reference != "" && initResp.Reference != reference {
@@ -132,20 +135,20 @@ func (s *paymentService) InitiatePayment(ctx context.Context, req *dto.InitiateP
 	return resp, nil
 }
 
-func (s *paymentService) VerifyPayment(ctx context.Context, reference string, userID uuid.UUID) (*dto.PaymentResponse, error) {
+func (s *paymentService) VerifyPayment(ctx context.Context, reference string, userID uuid.UUID) (*dto.PaymentResponse, *apierrors.AppError) {
 	payment, err := s.repo.FindByReference(ctx, reference)
 	if err != nil {
-		return nil, err
+		return nil, apierrors.NotFoundError("payment record not found")
 	}
 
 	if payment.UserID != userID {
-		return nil, errors.New("unauthorized: payment does not belong to user")
+		return nil, apierrors.ForbiddenError("payment does not belong to you")
 	}
 
 	return s.verifyPaymentInternal(ctx, payment)
 }
 
-func (s *paymentService) verifyPaymentInternal(ctx context.Context, payment *models.Payment) (*dto.PaymentResponse, error) {
+func (s *paymentService) verifyPaymentInternal(ctx context.Context, payment *models.Payment) (*dto.PaymentResponse, *apierrors.AppError) {
 	if payment.Status == types.PaymentStatusSuccess {
 		resp := dto.MapPaymentToResponse(payment)
 		return &resp, nil
@@ -153,12 +156,12 @@ func (s *paymentService) verifyPaymentInternal(ctx context.Context, payment *mod
 
 	provider, ok := s.providers[payment.Provider]
 	if !ok {
-		return nil, errors.New("provider not found")
+		return nil, apierrors.ValidationError("payment provider not found or disabled")
 	}
 
 	verifyResp, err := provider.VerifyPayment(ctx, payment.Reference)
 	if err != nil {
-		return nil, fmt.Errorf("verification failed: %w", err)
+		return nil, apierrors.InternalError(fmt.Errorf("verification failed: %w", err))
 	}
 
 	previousStatus := payment.Status
@@ -209,13 +212,31 @@ func (s *paymentService) verifyPaymentInternal(ctx context.Context, payment *mod
 				if err := settleRepoTx.Create(ctx, settlement); err != nil {
 					return fmt.Errorf("failed to create settlement: %w", err)
 				}
+			} else if payment.Status == types.PaymentStatusFailed {
+				// 3. Restore Stock on Failure (Requested Feature)
+				order, err := s.orderRepo.FindByID(ctx, payment.OrderID.String())
+				if err != nil {
+					return fmt.Errorf("order not found for stock restoration: %w", err)
+				}
+
+				stockChanges := make(map[uuid.UUID]int)
+				for _, item := range order.OrderItems {
+					stockChanges[item.MenuID] = item.Quantity // Positive restores stock
+				}
+				
+				if err := s.menuRepo.BatchUpdateStock(ctx, tx, stockChanges); err != nil {
+					return fmt.Errorf("failed to restore stock on payment failure: %w", err)
+				}
+
+				// Optionally mark order as cancelled or a special state if we return stock
+				// For now, we just return stock as requested.
 			}
 			return nil
 		})
 
 		if err != nil {
 			logger.Log.Error("payment verification persistence failed", zap.Error(err))
-			return nil, err
+			return nil, apierrors.InternalError(err)
 		}
 
 		// Publish Event
@@ -235,16 +256,16 @@ func (s *paymentService) verifyPaymentInternal(ctx context.Context, payment *mod
 	return &resp, nil
 }
 
-func (s *paymentService) HandleWebhook(ctx context.Context, providerName types.PaymentProvider, payload []byte, headers map[string]string) error {
+func (s *paymentService) HandleWebhook(ctx context.Context, providerName types.PaymentProvider, payload []byte, headers map[string]string) *apierrors.AppError {
 	provider, ok := s.providers[providerName]
 	if !ok {
-		return errors.New("provider not found")
+		return apierrors.ValidationError("provider not found")
 	}
 
 	// 1. Validate Signature (Issue 2.3)
 	isValid, err := provider.ValidateWebhook(ctx, payload, headers)
 	if err != nil || !isValid {
-		return errors.New("invalid webhook signature")
+		return apierrors.ForbiddenError("invalid webhook signature")
 	}
 
 	// 2. Parse basic event data to handle deduplication
@@ -256,7 +277,7 @@ func (s *paymentService) HandleWebhook(ctx context.Context, providerName types.P
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(payload, &eventData); err != nil {
-		return fmt.Errorf("failed to parse webhook payload: %w", err)
+		return apierrors.ValidationError(fmt.Sprintf("failed to parse webhook payload: %v", err))
 	}
 
 	eventID := fmt.Sprintf("%s_%v", providerName, eventData.Data.ID)
@@ -286,7 +307,7 @@ func (s *paymentService) HandleWebhook(ctx context.Context, providerName types.P
 	if eventData.Event == "charge.success" || eventData.Event == "successful" || eventNameMatch(eventData.Event, "success") {
 		ref := eventData.Data.Reference
 		if ref == "" {
-			return errors.New("reference not found in webhook data")
+			return apierrors.ValidationError("reference not found in webhook data")
 		}
 
 		payment, err := s.repo.FindByReference(ctx, ref)
@@ -294,18 +315,21 @@ func (s *paymentService) HandleWebhook(ctx context.Context, providerName types.P
 			// Try external reference as fallback
 			payment, err = s.repo.FindByExternalReference(ctx, ref)
 			if err != nil {
-				return fmt.Errorf("payment not found for reference %s", ref)
+				return apierrors.NotFoundError(fmt.Sprintf("payment not found for reference %s", ref))
 			}
 		}
 
-		_, err = s.verifyPaymentInternal(ctx, payment)
-		if err != nil {
-			return err
+		_, appErr := s.verifyPaymentInternal(ctx, payment)
+		if appErr != nil {
+			return appErr
 		}
 	}
 
 	// 5. Mark as processed
-	return s.repo.MarkWebhookProcessed(ctx, eventID)
+	if err := s.repo.MarkWebhookProcessed(ctx, eventID); err != nil {
+		return apierrors.InternalError(err)
+	}
+	return nil
 }
 
 func eventNameMatch(event, target string) bool {

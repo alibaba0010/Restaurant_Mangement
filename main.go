@@ -71,11 +71,12 @@ func main() {
     handler := routes.ApiRouter(frontendUrl)
 
     server := &http.Server{
-        Addr:         ":" + port,
-        Handler:      handler,
-        ReadTimeout:  15 * time.Second,
-        WriteTimeout: 30 * time.Second,
-        IdleTimeout:  60 * time.Second,
+        Addr:              ":" + port,
+        Handler:           handler,
+        ReadHeaderTimeout: 10 * time.Second,
+        ReadTimeout:       10 * time.Minute,
+        WriteTimeout:      10 * time.Minute,
+        IdleTimeout:       120 * time.Second,
     }
 
     // Start server in goroutine

@@ -15,8 +15,8 @@ func InitProviders(cfg config.Config) map[types.PaymentProvider]PaymentProvider 
 	}
 
 	// Monnify
-	if cfg.MONNIFY_API_KEY != "" && cfg.MONNIFY_CONTRACT_CODE != "" {
-		providers[types.PaymentProviderMonnify] = NewMonnifyProvider(cfg.MONNIFY_API_KEY, cfg.MONNIFY_CONTRACT_CODE)
+	if cfg.MONNIFY_API_KEY != "" && cfg.MONNIFY_SECRET_KEY != "" && cfg.MONNIFY_CONTRACT_CODE != "" {
+		providers[types.PaymentProviderMonnify] = NewMonnifyProvider(cfg.MONNIFY_API_KEY, cfg.MONNIFY_SECRET_KEY, cfg.MONNIFY_CONTRACT_CODE)
 	}
 
 	// Flutterwave

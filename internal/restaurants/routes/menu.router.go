@@ -40,7 +40,7 @@ func MenuRoutes(route *mux.Router) {
 	management := menus.PathPrefix("").Subrouter()
 	management.Use(guards.AuthMiddleware, guards.RequireRole(types.RoleManagement.String()))
 
-	uploadLimit := middlewares.RateLimit(1, 3)
+	uploadLimit := middlewares.RateLimit(2, 4)
 
 	// Specific Management Routes
 	management.Handle("/upload", uploadLimit(http.HandlerFunc(menuController.UploadMenuMediaHandler))).Methods("POST")

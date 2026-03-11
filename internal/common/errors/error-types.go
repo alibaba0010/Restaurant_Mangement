@@ -55,11 +55,7 @@ func InternalError(err error) *AppError {
 		return New("Not Found", "Requested resource not found", http.StatusNotFound, err)
 	}
 
-	short := err.Error()
-	if len(short) > 200 {
-		short = short[:200]
-	}
-	msg := fmt.Sprintf("Something went wrong, try again later: %s", short)
+	msg := "An unexpected error occurred. Please try again later."
 	return New("Internal Server Error", msg, http.StatusInternalServerError, err)
 }
 

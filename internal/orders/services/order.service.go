@@ -405,7 +405,21 @@ func (s *OrderService) UpdateOrderStatus(ctx context.Context, id string, status 
 		}
 
 		// Step 4: Persist status change.
-		return s.orderRepo.UpdateStatus(ctx, tx, id, newStatus)
+		if err := s.orderRepo.UpdateStatus(ctx, tx, id, newStatus); err != nil {
+			return err
+		}
+
+		// Step 5: Restore stock if cancelled (Senior Dev Fix)
+		if newStatus == types.OrderStatusCancelled {
+			stockChanges := make(map[uuid.UUID]int)
+			for _, item := range order.OrderItems {
+				stockChanges[item.MenuID] = item.Quantity // Positive value restores stock
+			}
+			if err := s.menuRepo.BatchUpdateStock(ctx, tx, stockChanges); err != nil {
+				return err
+			}
+		}
+		return nil
 	})
 
 	if err != nil {

@@ -24,14 +24,16 @@ const (
 // MonnifyProvider implements the PaymentProvider interface for Monnify
 type MonnifyProvider struct {
 	apiKey       string
+	secretKey    string
 	contractCode string
 	client       *http.Client
 }
 
 // NewMonnifyProvider creates a new Monnify provider instance
-func NewMonnifyProvider(apiKey, contractCode string) *MonnifyProvider {
+func NewMonnifyProvider(apiKey, secretKey, contractCode string) *MonnifyProvider {
 	return &MonnifyProvider{
 		apiKey:       apiKey,
+		secretKey:    secretKey,
 		contractCode: contractCode,
 		client: &http.Client{
 			Timeout: monnifyTimeout,
@@ -74,7 +76,11 @@ func (m *MonnifyProvider) InitializePayment(ctx context.Context, req *Initialize
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	m.setAuthHeaders(request)
+	token, err := m.getBearerToken(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get monnify access token: %w", err)
+	}
+	request.Header.Set("Authorization", "Bearer "+token)
 	request.Header.Set("Content-Type", "application/json")
 
 	resp, err := m.client.Do(request)
@@ -130,7 +136,11 @@ func (m *MonnifyProvider) VerifyPayment(ctx context.Context, reference string) (
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	m.setAuthHeaders(request)
+	token, err := m.getBearerToken(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get monnify access token: %w", err)
+	}
+	request.Header.Set("Authorization", "Bearer "+token)
 
 	resp, err := m.client.Do(request)
 	if err != nil {
@@ -202,7 +212,11 @@ func (m *MonnifyProvider) RefundPayment(ctx context.Context, reference string, a
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	m.setAuthHeaders(request)
+	token, err := m.getBearerToken(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get monnify access token: %w", err)
+	}
+	request.Header.Set("Authorization", "Bearer "+token)
 	request.Header.Set("Content-Type", "application/json")
 
 	resp, err := m.client.Do(request)
@@ -256,8 +270,41 @@ func (m *MonnifyProvider) ValidateWebhook(ctx context.Context, body []byte, head
 	return computedSignature == signature, nil
 }
 
-func (m *MonnifyProvider) setAuthHeaders(req *http.Request) {
-	authString := fmt.Sprintf("%s:%s", m.apiKey, m.apiKey)
+func (m *MonnifyProvider) getBearerToken(ctx context.Context) (string, error) {
+	authString := fmt.Sprintf("%s:%s", m.apiKey, m.secretKey)
 	encodedAuth := base64.StdEncoding.EncodeToString([]byte(authString))
+
+	req, err := http.NewRequestWithContext(ctx, "POST", monnifyAPIBaseURL+"/auth/login", nil)
+	if err != nil {
+		return "", err
+	}
+
 	req.Header.Set("Authorization", "Basic "+encodedAuth)
+
+	resp, err := m.client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("monnify auth failed with status %d", resp.StatusCode)
+	}
+
+	var authResp struct {
+		RequestSuccessful bool `json:"requestSuccessful"`
+		Data              struct {
+			AccessToken string `json:"accessToken"`
+		} `json:"data"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&authResp); err != nil {
+		return "", err
+	}
+
+	if !authResp.RequestSuccessful {
+		return "", fmt.Errorf("monnify auth response unsuccessful")
+	}
+
+	return authResp.Data.AccessToken, nil
 }

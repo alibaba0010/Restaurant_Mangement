@@ -165,6 +165,11 @@ func RefreshTokenHandler(writer http.ResponseWriter, request *http.Request) {
 		return
 	}
 
+	// Clear any existing tokens first so if refresh fails, the client is logged out.
+	cfg := config.LoadConfig()
+	isSecure := strings.HasPrefix(cfg.FRONTEND_URL, "https")
+	utils.ClearCookies(writer, isSecure)
+
 	// Extract IP and User-Agent for new token
 	ip := utils.ExtractClientIP(request)
 	userAgent := request.Header.Get("User-Agent")
@@ -177,9 +182,6 @@ func RefreshTokenHandler(writer http.ResponseWriter, request *http.Request) {
 	}
 
 	// Set new cookies
-	cfg := config.LoadConfig()
-	isSecure := strings.HasPrefix(cfg.FRONTEND_URL, "https")
-	utils.ClearCookies(writer, isSecure)
 	utils.SetAuthCookies(writer, newTokenPair.AccessToken, newTokenPair.RefreshToken, services.AccessTokenDuration, services.RefreshTokenDuration)
 
 	// Return new access token in body
