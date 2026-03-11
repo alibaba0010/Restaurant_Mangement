@@ -120,9 +120,8 @@ func (c *PaymentController) WebhookHandler(w http.ResponseWriter, r *http.Reques
 	}
 
 	if err := c.service.HandleWebhook(r.Context(), providerEnum, body, headers); err != nil {
-		// Log error but return 200 to acknowledge Receipt (Standard practice for webhooks)
-		// unless you want the provider to retry.
-		w.WriteHeader(http.StatusOK)
+		// Log error and return 500 for processing errors so provider retries (Issue 2.3)
+		errors.ErrorResponse(w, r, errors.InternalError(err))
 		return
 	}
 

@@ -9,7 +9,6 @@ ALTER TABLE restaurants ADD COLUMN cuisine_type VARCHAR(100);
 
 -- 3. Revert column type changes
 ALTER TABLE restaurants ALTER COLUMN address TYPE VARCHAR(200);
-ALTER TABLE restaurants ALTER COLUMN id TYPE VARCHAR(36);
 
 -- 4. Drop new columns
 ALTER TABLE restaurants DROP COLUMN IF EXISTS takeaway_available;

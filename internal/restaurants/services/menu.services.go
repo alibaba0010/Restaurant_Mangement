@@ -1,6 +1,7 @@
 package services
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -88,10 +89,20 @@ func isAllowedContentType(contentType string) bool {
 // generateKey determines duplicate S3 key logic
 func generateKey(s3Service *s3.S3Service, userID, filename, contentType string) string {
 	ext := filepath.Ext(filename)
+	
+	// Sanitize filenames and prevent directory traversal by always creating a unique ID
+	uniqueID, err := uuid.NewV7()
+	var safeName string
+	if err == nil {
+		safeName = uniqueID.String() + ext
+	} else {
+		safeName = uuid.New().String() + ext
+	}
+
 	if strings.HasPrefix(contentType, "video/") {
 		return s3Service.GetVideoUploadKey(ext)
 	}
-	return s3Service.GetMenuImageKey(userID, filename)
+	return s3Service.GetMenuImageKey(userID, safeName)
 }
 
 // MapToResponse maps a Menu model to MenuResponse DTO
@@ -161,7 +172,16 @@ func (ms *MenuService) GetPartPresignedURL(ctx context.Context, key, uploadID st
 // UploadMultipartPart proxies the chunk body from the client to S3 via the AWS SDK.
 // This avoids the browser → S3 CORS preflight issue entirely.
 func (ms *MenuService) UploadMultipartPart(ctx context.Context, key, uploadID string, partNumber int32, body io.Reader, contentLength int64) (string, error) {
-	etag, err := ms.s3Service.UploadPart(ctx, key, uploadID, partNumber, body, contentLength)
+	// 1. Read the chunk into a raw byte slice — MUST use bytes.NewReader, not strings.NewReader,
+	// because string(partBytes) corrupts binary data by re-encoding non-UTF-8 bytes.
+	partBytes, err := io.ReadAll(io.LimitReader(body, contentLength))
+	if err != nil {
+		return "", err
+	}
+
+	byteReader := bytes.NewReader(partBytes)
+
+	etag, err := ms.s3Service.UploadPart(ctx, key, uploadID, partNumber, byteReader, int64(len(partBytes)))
 	if err != nil {
 		return "", err
 	}
@@ -238,12 +258,18 @@ func (ms *MenuService) UploadMedia(ctx context.Context, userID string, filename 
 		return "", errors.ValidationError("Invalid file content type")
 	}
 
-	// Create a new reader combining the buffer and the rest of the body
-	fullBody := io.MultiReader(strings.NewReader(string(buffer[:n])), body)
+	// Rewind the stream to the start so S3 gets the whole file and is seekable
+	if seeker, ok := body.(io.Seeker); ok {
+		if _, seekErr := seeker.Seek(0, io.SeekStart); seekErr != nil {
+			return "", errors.InternalError(seekErr)
+		}
+	} else {
+		return "", errors.InternalError(fmt.Errorf("body stream is not seekable"))
+	}
 
 	key := generateKey(ms.s3Service, userID, filename, detectedType)
 
-	err = ms.s3Service.DirectUpload(ctx, key, fullBody, fileSize, detectedType)
+	err = ms.s3Service.DirectUpload(ctx, key, body, fileSize, detectedType)
 	if err != nil {
 		return "", errors.InternalError(err)
 	}

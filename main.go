@@ -14,7 +14,6 @@ import (
 	_ "github.com/alibaba0010/postgres-api/docs"
 	"github.com/alibaba0010/postgres-api/internal/common/events"
 	"github.com/alibaba0010/postgres-api/internal/common/logger"
-	"github.com/alibaba0010/postgres-api/internal/common/middlewares"
 	"github.com/alibaba0010/postgres-api/internal/config"
 	"github.com/alibaba0010/postgres-api/internal/database"
 
@@ -51,7 +50,9 @@ func main() {
     if producer != nil {
         defer producer.Close()
     }
-    defer consumer.Close()
+    if consumer != nil {
+        defer consumer.Close()
+    }
 
     // Register Module Subscribers
     orders.RegisterSubscribers(consumer)
@@ -67,15 +68,14 @@ func main() {
     // Setup HTTP server
     port := cfg.Port
     frontendUrl := cfg.FRONTEND_URL
-    route := routes.ApiRouter()
-    handler := middlewares.CORS(frontendUrl)(route)
+    handler := routes.ApiRouter(frontendUrl)
 
     server := &http.Server{
         Addr:         ":" + port,
         Handler:      handler,
-        ReadTimeout:  5 * time.Minute,
-        WriteTimeout: 5 * time.Minute,
-        IdleTimeout:  10 * time.Minute,
+        ReadTimeout:  15 * time.Second,
+        WriteTimeout: 30 * time.Second,
+        IdleTimeout:  60 * time.Second,
     }
 
     // Start server in goroutine

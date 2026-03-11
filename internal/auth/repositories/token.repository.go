@@ -29,6 +29,17 @@ func (r *TokenRepository) FindOne(ctx context.Context, userID, token string) (*m
 	return rt, nil
 }
 
+func (r *TokenRepository) FindByToken(ctx context.Context, token string) (*models.RefreshToken, error) {
+	rt := new(models.RefreshToken)
+	err := database.DB.NewSelect().Model(rt).
+		Where("token = ?", token).
+		Scan(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return rt, nil
+}
+
 func (r *TokenRepository) Exists(ctx context.Context, userID, token string) (bool, error) {
 	return database.DB.NewSelect().Model((*models.RefreshToken)(nil)).
 		Where("user_id = ? AND token = ?", userID, token).
@@ -65,3 +76,24 @@ func (r *TokenRepository) DeleteAllForUserInTx(ctx context.Context, tx bun.Tx, u
 	}
 	return res.RowsAffected()
 }
+
+// RotateToken performs the transactional rotation of a token
+func (r *TokenRepository) RotateToken(ctx context.Context, oldUserID, oldToken string, newToken *models.RefreshToken) error {
+	return database.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		// Delete the old token
+		if oldToken != "" {
+			_, err := tx.NewDelete().
+				Model((*models.RefreshToken)(nil)).
+				Where("user_id = ? AND token = ?", oldUserID, oldToken).
+				Exec(ctx)
+			if err != nil {
+				return err
+			}
+		}
+
+		// Insert the new token
+		_, err := tx.NewInsert().Model(newToken).Exec(ctx)
+		return err
+	})
+}
+

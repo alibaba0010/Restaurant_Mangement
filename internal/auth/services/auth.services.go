@@ -3,11 +3,12 @@ package services
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"net"
 	"strings"
 	"time"
 
@@ -370,52 +371,55 @@ func RefreshTokenWithRotation(ctx context.Context, refreshToken, ip, userAgent s
 		return nil, errors.UnauthorizedError("refresh token missing; please login again")
 	}
 
-	// Validate refresh token signature and expiration
-	refreshClaims, appErr := ValidateRefreshToken(refreshToken)
-	if appErr != nil {
-		return nil, appErr
+	// Grace Period logic using Redis
+	graceKey := "grace:refresh:" + refreshToken
+	val, err := database.RedisClient.Get(ctx, graceKey).Bytes()
+	if err == nil && len(val) > 0 {
+		var tp TokenPair
+		if jsonErr := json.Unmarshal(val, &tp); jsonErr == nil {
+			logger.Log.Info("Grace period hit for concurrent refresh request")
+			return &tp, nil
+		}
 	}
 
-	userID := refreshClaims.UserID
+	// Hash the incoming opaque token
+	hash := sha256.Sum256([]byte(refreshToken))
+	hashedToken := hex.EncodeToString(hash[:])
 
 	// Time: O(1) Space: O(1)
-	// Fetch the stored refresh token record to validate metadata (ip/userAgent)
-	rt, err := repositories.TokenRepo.FindOne(ctx, userID, refreshToken)
-	if err != nil {
-		logger.Log.Error("failed to query refresh token from DB", zap.Error(err))
-		return nil, errors.UnauthorizedError("user login")
+	// Fetch the stored refresh token record by hashed token
+	rt, err := repositories.TokenRepo.FindByToken(ctx, hashedToken)
+	if err != nil || rt == nil || rt.UserID == "" {
+		logger.Log.Warn("refresh token not found in database", zap.Error(err))
+		return nil, errors.UnauthorizedError("invalid or expired refresh token")
 	}
 
-	// Validate IP and User-Agent if they were recorded with the token
-	if rt.IPAddress != "" && ip != "" && strings.TrimSpace(rt.IPAddress) != strings.TrimSpace(ip) {
-		// Attempt to parse both IPs to check if they are both loopback addresses
-		// This handles the case where one is [::1] and the other is 127.0.0.1 (common in dev/localhost)
-		rtIP := net.ParseIP(strings.Trim(rt.IPAddress, "[]"))
-		gotIP := net.ParseIP(strings.Trim(ip, "[]"))
-
-		isLoopbackMismatch := false
-		if rtIP != nil && gotIP != nil {
-			if rtIP.IsLoopback() && gotIP.IsLoopback() {
-				// Both are loopback, consider them matching
-				isLoopbackMismatch = true
-			}
-		}
-
-		if !isLoopbackMismatch {
-			logger.Log.Warn("refresh token IP mismatch", zap.String("expected", rt.IPAddress), zap.String("got", ip))
-			return nil, errors.UnauthorizedError("refresh token validation failed")
-		}
-	}
-	if rt.UserAgent != "" && userAgent != "" && strings.TrimSpace(rt.UserAgent) != strings.TrimSpace(userAgent) {
-		logger.Log.Warn("refresh token user-agent mismatch", zap.String("expected", rt.UserAgent), zap.String("got", userAgent))
-		return nil, errors.UnauthorizedError("refresh token validation failed")
+	if time.Now().After(rt.ExpiresAt) {
+		// Clean up the expired token immediately
+		_ = repositories.TokenRepo.DeleteOne(ctx, rt.UserID, hashedToken)
+		return nil, errors.UnauthorizedError("refresh token has expired")
 	}
 
-	// Generate new token pair with rotation
-	// This will create a new refresh token and store it in DB
-	newTokenPair, appErr := GenerateTokenPair(ctx, userID, refreshClaims.Role, ip, userAgent)
+	// We no longer reject the refresh token based on IP/UA mismatch here, 
+	// preventing broken sessions on network switches or browser updates.
+
+	// Get the user to get the role (since it's not in the token anymore)
+	user, err := repositories.UserRepo.FindByID(ctx, rt.UserID)
+	if err != nil || user == nil {
+		return nil, errors.InternalError(fmt.Errorf("could not retrieve user for refresh"))
+	}
+
+	// Generate new token pair with rotation and update DB atomically
+	// Note: We use the Rotate version by passing the oldHashedToken
+	newTokenPair, appErr := GenerateTokenPair(ctx, user.ID, user.Role, ip, userAgent, hashedToken)
 	if appErr != nil {
 		return nil, appErr
+	}
+
+	// Store the new tokens in Redis for the grace period (15 seconds)
+	// so concurrent requests get the same new tokens rather than failing.
+	if tpBytes, err := json.Marshal(newTokenPair); err == nil {
+		_ = database.RedisClient.Set(ctx, graceKey, tpBytes, 15*time.Second).Err()
 	}
 
 	return newTokenPair, nil

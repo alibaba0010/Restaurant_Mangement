@@ -2,22 +2,27 @@ package services
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/alibaba0010/postgres-api/internal/common/events"
 	"github.com/alibaba0010/postgres-api/internal/common/guards"
+	"github.com/alibaba0010/postgres-api/internal/common/logger"
 	"github.com/alibaba0010/postgres-api/internal/common/types"
 	"github.com/alibaba0010/postgres-api/internal/config"
 	"github.com/alibaba0010/postgres-api/internal/database"
-	orderModels "github.com/alibaba0010/postgres-api/internal/orders/models"
+	orderRepo "github.com/alibaba0010/postgres-api/internal/orders/repositories"
 	"github.com/alibaba0010/postgres-api/internal/payments/dto"
 	paymentEvents "github.com/alibaba0010/postgres-api/internal/payments/events"
 	"github.com/alibaba0010/postgres-api/internal/payments/models"
 	"github.com/alibaba0010/postgres-api/internal/payments/providers"
 	"github.com/alibaba0010/postgres-api/internal/payments/repositories"
 	"github.com/shopspring/decimal"
+	"github.com/uptrace/bun"
+	"go.uber.org/zap"
 
 	"github.com/google/uuid"
 )
@@ -31,12 +36,13 @@ type PaymentService interface {
 type paymentService struct {
 	repo           *repositories.PaymentRepository
 	settlementRepo *repositories.SettlementRepository
+	orderRepo      *orderRepo.OrderRepository
 	producer       events.Producer
 	providers      map[types.PaymentProvider]providers.PaymentProvider
 	cfg            config.Config
 }
 
-func NewPaymentService(producer events.Producer) PaymentService {
+func NewPaymentService(producer events.Producer, orderRepo *orderRepo.OrderRepository) PaymentService {
 	cfg := config.LoadConfig()
 	provMap := providers.InitProviders(cfg)
 	repo := repositories.NewPaymentRepository(database.DB)
@@ -45,6 +51,7 @@ func NewPaymentService(producer events.Producer) PaymentService {
 	return &paymentService{
 		repo:           repo,
 		settlementRepo: settleRepo,
+		orderRepo:      orderRepo,
 		producer:       producer,
 		providers:      provMap,
 		cfg:            cfg,
@@ -56,9 +63,9 @@ func (s *paymentService) InitiatePayment(ctx context.Context, req *dto.InitiateP
 	if err != nil {
 		return nil, fmt.Errorf("failed to get user email: %w", err)
 	}
-	// 1. Get Order
-	var order orderModels.Order
-	if err := database.DB.NewSelect().Model(&order).Where("id = ?", req.OrderID).Scan(ctx); err != nil {
+	// 1. Get Order (Issue 1.5: use Repository)
+	order, err := s.orderRepo.FindByID(ctx, req.OrderID.String())
+	if err != nil {
 		return nil, fmt.Errorf("order not found: %w", err)
 	}
 
@@ -135,6 +142,10 @@ func (s *paymentService) VerifyPayment(ctx context.Context, reference string, us
 		return nil, errors.New("unauthorized: payment does not belong to user")
 	}
 
+	return s.verifyPaymentInternal(ctx, payment)
+}
+
+func (s *paymentService) verifyPaymentInternal(ctx context.Context, payment *models.Payment) (*dto.PaymentResponse, error) {
 	if payment.Status == types.PaymentStatusSuccess {
 		resp := dto.MapPaymentToResponse(payment)
 		return &resp, nil
@@ -145,7 +156,7 @@ func (s *paymentService) VerifyPayment(ctx context.Context, reference string, us
 		return nil, errors.New("provider not found")
 	}
 
-	verifyResp, err := provider.VerifyPayment(ctx, reference)
+	verifyResp, err := provider.VerifyPayment(ctx, payment.Reference)
 	if err != nil {
 		return nil, fmt.Errorf("verification failed: %w", err)
 	}
@@ -160,39 +171,63 @@ func (s *paymentService) VerifyPayment(ctx context.Context, reference string, us
 	}
 
 	if payment.Status != previousStatus {
-		if err := s.repo.Update(ctx, payment, "status", "completed_at", "updated_at"); err != nil {
+		// Use a transaction for atomic update of payment and creation of settlement
+		err := database.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+			// 1. Update Payment Status (using transaction)
+			repoTx := repositories.NewPaymentRepository(tx)
+			if err := repoTx.Update(ctx, payment, "status", "completed_at", "updated_at"); err != nil {
+				return err
+			}
+
+			if payment.Status == types.PaymentStatusSuccess {
+				// 2. Get Order and Create Settlement
+				order, err := s.orderRepo.FindByID(ctx, payment.OrderID.String())
+				if err != nil {
+					return fmt.Errorf("order not found: %w", err)
+				}
+
+				// Commission rate from config
+				commissionRateRaw := s.cfg.PlatformCommissionRate
+				if commissionRateRaw <= 0 {
+					commissionRateRaw = 0.10 // Default 10%
+				}
+				commissionRate := decimal.NewFromFloat(commissionRateRaw)
+				
+				platformFee := order.TotalAmount.Mul(commissionRate).Round(2)
+				restaurantShare := order.TotalAmount.Sub(platformFee)
+
+				settlement := &models.Settlement{
+					OrderID:         order.ID,
+					RestaurantID:    order.RestaurantID,
+					TotalAmount:     order.TotalAmount,
+					PlatformFee:     platformFee,
+					RestaurantShare: restaurantShare,
+					Status:          models.SettlementStatusPending,
+				}
+				
+				settleRepoTx := repositories.NewSettlementRepository(tx)
+				if err := settleRepoTx.Create(ctx, settlement); err != nil {
+					return fmt.Errorf("failed to create settlement: %w", err)
+				}
+			}
+			return nil
+		})
+
+		if err != nil {
+			logger.Log.Error("payment verification persistence failed", zap.Error(err))
 			return nil, err
 		}
 
+		// Publish Event
 		if s.producer != nil {
 			eventType := "payment_failed"
 			if payment.Status == types.PaymentStatusSuccess {
 				eventType = "payment_successful"
-				
-				// Create Settlement Record
-				// 1. Get Order to find RestaurantID and Amount
-				var order orderModels.Order
-				if err := database.DB.NewSelect().Model(&order).Where("id = ?", payment.OrderID).Scan(ctx); err == nil {
-					commissionRate := decimal.NewFromFloat(0.10) // 10% Commission
-					platformFee := order.TotalAmount.Mul(commissionRate)
-					restaurantShare := order.TotalAmount.Sub(platformFee)
-
-					settlement := &models.Settlement{
-						OrderID:         order.ID,
-						RestaurantID:    order.RestaurantID,
-						TotalAmount:     order.TotalAmount,
-						PlatformFee:     platformFee,
-						RestaurantShare: restaurantShare,
-						Status:          models.SettlementStatusPending,
-					}
-					
-					if err := s.settlementRepo.Create(ctx, settlement); err != nil {
-						fmt.Printf("failed to create settlement: %v\n", err)
-					}
-				}
 			}
 			event := paymentEvents.NewPaymentEvent(eventType, payment)
-			_ = s.producer.Publish(ctx, event)
+			if pubErr := s.producer.Publish(ctx, event); pubErr != nil {
+				logger.Log.Error("failed to publish payment event", zap.Error(pubErr))
+			}
 		}
 	}
 
@@ -206,15 +241,73 @@ func (s *paymentService) HandleWebhook(ctx context.Context, providerName types.P
 		return errors.New("provider not found")
 	}
 
+	// 1. Validate Signature (Issue 2.3)
 	isValid, err := provider.ValidateWebhook(ctx, payload, headers)
 	if err != nil || !isValid {
 		return errors.New("invalid webhook signature")
 	}
 
-	// This is a simplified webhook handler. 
-	// In a real app, you would parse the payload based on the provider, 
-	// find the internal reference, and call VerifyPayment or update status directly.
-	// Since Paystack/Monnify/etc have different formats, we'd need a sub-factory or parser here.
+	// 2. Parse basic event data to handle deduplication
+	var eventData struct {
+		Event string `json:"event"`
+		Data  struct {
+			ID        interface{} `json:"id"`
+			Reference string      `json:"reference"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(payload, &eventData); err != nil {
+		return fmt.Errorf("failed to parse webhook payload: %w", err)
+	}
+
+	eventID := fmt.Sprintf("%s_%v", providerName, eventData.Data.ID)
 	
-	return nil // To be fully implemented with specific provider parsers
+	// 3. Deduplication (Issue 2.3)
+	existing, _ := s.repo.FindWebhookByEventID(ctx, eventID)
+	if existing != nil && existing.Processed {
+		logger.Log.Info("Webhook already processed", zap.String("event_id", eventID))
+		return nil
+	}
+
+	// Log arrival
+	if existing == nil {
+		var fullPayload map[string]interface{}
+		_ = json.Unmarshal(payload, &fullPayload)
+
+		_ = s.repo.LogWebhook(ctx, &models.PaymentWebhookLog{
+			Provider:        providerName,
+			ProviderEventID: eventID,
+			EventType:       eventData.Event,
+			Payload:         fullPayload,
+			Processed:       false,
+		})
+	}
+
+	// 4. Handle Specific Events
+	if eventData.Event == "charge.success" || eventData.Event == "successful" || eventNameMatch(eventData.Event, "success") {
+		ref := eventData.Data.Reference
+		if ref == "" {
+			return errors.New("reference not found in webhook data")
+		}
+
+		payment, err := s.repo.FindByReference(ctx, ref)
+		if err != nil {
+			// Try external reference as fallback
+			payment, err = s.repo.FindByExternalReference(ctx, ref)
+			if err != nil {
+				return fmt.Errorf("payment not found for reference %s", ref)
+			}
+		}
+
+		_, err = s.verifyPaymentInternal(ctx, payment)
+		if err != nil {
+			return err
+		}
+	}
+
+	// 5. Mark as processed
+	return s.repo.MarkWebhookProcessed(ctx, eventID)
+}
+
+func eventNameMatch(event, target string) bool {
+	return strings.Contains(strings.ToLower(event), target)
 }

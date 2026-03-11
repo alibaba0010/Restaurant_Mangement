@@ -111,6 +111,9 @@ func (oc *OrderController) UpdateOrderStatusHandler(writer http.ResponseWriter, 
 		return
 	}
 
+	// Normalize status (lowercase and trimmed) - Issue 7.3
+	input.Status = services.NormalizeStatus(input.Status)
+
 	user := guards.ExtractAuthenticatedUser(request)
 	if user == nil {
 		errors.ErrorResponse(writer, request, errors.UnauthorizedError("Authentication required"))

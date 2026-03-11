@@ -2,6 +2,10 @@ package services
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"time"
 
@@ -27,29 +31,14 @@ type TokenPair struct {
 	RefreshToken string `json:"refresh_token"`
 }
 
-// AccessClaims are the JWT claims stored in access tokens.
 type AccessTokenClaims struct {
 	UserID string         `json:"user_id"`
 	Role   types.UserRole `json:"role"`
 	jwt.RegisteredClaims
 }
 
-type RefreshTokenClaims struct {
-	UserID    string         `json:"user_id"`
-	Role      types.UserRole `json:"role"`
-	Token     string         `json:"token"`
-	IPAddress string         `json:"ip_address,omitempty"`
-	UserAgent string         `json:"user_agent,omitempty"`
-	jwt.RegisteredClaims
-}
-type RefreshTokenStorage interface {
-	StoreRefreshToken(ctx context.Context, token string, data RefreshTokenClaims) error
-	GetRefreshToken(ctx context.Context, token string) (*RefreshTokenClaims, error)
-	DeleteRefreshToken(ctx context.Context, token string) error
-	DeleteUserRefreshTokens(ctx context.Context, userID string) error
-}
-
-func GenerateTokenPair(ctx context.Context, userID string, role types.UserRole, ip, userAgent string) (*TokenPair, *apierrors.AppError) {
+// GenerateTokenPair optionally accepts oldHashedToken for transaction-safe rotation
+func GenerateTokenPair(ctx context.Context, userID string, role types.UserRole, ip, userAgent string, oldHashedToken ...string) (*TokenPair, *apierrors.AppError) {
 	cfg := config.LoadConfig()
 
 	now := time.Now()
@@ -72,50 +61,46 @@ func GenerateTokenPair(ctx context.Context, userID string, role types.UserRole, 
 		return nil, apierrors.InternalError(err)
 	}
 
-	// Refresh token
-	refreshClaims := &RefreshTokenClaims{
-		UserID:    userID,
-		Role:      role,
-		IPAddress: ip,
-		UserAgent: userAgent,
-		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(now.Add(RefreshTokenDuration)),
-			IssuedAt:  jwt.NewNumericDate(now),
-			Subject:   userID,
-		},
-	}
-
-	refreshTok := jwt.NewWithClaims(jwt.SigningMethodHS256, refreshClaims)
-	refreshStr, err := refreshTok.SignedString([]byte(cfg.REFRESH_TOKEN_SECRET))
-	if err != nil {
-		logger.Log.Error("failed to sign refresh token", zap.Error(err))
+	// Opaque Refresh token: Generate 32 crypto-secure random bytes
+	rawTokenBytes := make([]byte, 32)
+	if _, err := rand.Read(rawTokenBytes); err != nil {
+		logger.Log.Error("failed to generate random bytes for refresh token", zap.Error(err))
 		return nil, apierrors.InternalError(err)
 	}
+	// The client-facing raw string
+	refreshStr := base64.URLEncoding.EncodeToString(rawTokenBytes)
 
-	// Persist refresh token in DB
+	// Hash it securely for DB storage
+	hash := sha256.Sum256([]byte(refreshStr))
+	hashedToken := hex.EncodeToString(hash[:])
+
+	// Per your review, we NEVER call DeleteAllForUser here anymore. Sessions are preserved.
 	newUUID, err := utils.GenerateUUIDv7()
 	if err != nil {
 		logger.Log.Error("failed to generate UUID for refresh token", zap.Error(err))
 		return nil, apierrors.InternalError(err)
 	}
 
-	// Persist refresh token in DB
-	// First, delete any existing refresh tokens for this user to ensure single session (optional based on requirements)
-	if _, err := repositories.TokenRepo.DeleteAllForUser(ctx, userID); err != nil {
-		logger.Log.Warn("failed to delete existing refresh tokens", zap.Error(err), zap.String("user_id", userID))
-	}
-
 	rt := &models.RefreshToken{
 		ID:        newUUID.String(),
 		UserID:    userID,
-		Token:     refreshStr,
+		Token:     hashedToken, // Stored hashed
 		IPAddress: ip,
 		UserAgent: userAgent,
 		ExpiresAt: now.Add(RefreshTokenDuration),
 	}
-	if err := repositories.TokenRepo.Create(ctx, rt); err != nil {
-		logger.Log.Error("failed to store refresh token", zap.Error(err))
-		return nil, apierrors.InternalError(err)
+
+	// If rotating, use RotateToken from TokenRepo explicitly with atomic db operations
+	var dbErr error
+	if len(oldHashedToken) > 0 && oldHashedToken[0] != "" {
+		dbErr = repositories.TokenRepo.RotateToken(ctx, userID, oldHashedToken[0], rt)
+	} else {
+		dbErr = repositories.TokenRepo.Create(ctx, rt)
+	}
+
+	if dbErr != nil {
+		logger.Log.Error("failed to store refresh token", zap.Error(dbErr))
+		return nil, apierrors.InternalError(dbErr)
 	}
 
 	return &TokenPair{AccessToken: accessStr, RefreshToken: refreshStr}, nil
@@ -150,51 +135,6 @@ func VerifyAccessToken(tokenString string) (*AccessTokenClaims, *apierrors.AppEr
 	return claims, nil
 }
 
-// ValidateRefreshToken verifies the refresh token JWT and returns claims if valid.
-func ValidateRefreshToken(tokenString string) (*RefreshTokenClaims, *apierrors.AppError) {
-	cfg := config.LoadConfig()
 
-	claims := &RefreshTokenClaims{}
-	token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (any, error) {
-		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, apierrors.UnauthorizedError("invalid token signing method")
-		}
-		return []byte(cfg.REFRESH_TOKEN_SECRET), nil
-	})
 
-	if err != nil || !token.Valid {
-		logger.Log.Debug("refresh token verification failed", zap.Error(err))
-		return nil, apierrors.UnauthorizedError("invalid or expired refresh token")
-	}
 
-	return claims, nil
-}
-
-func RefreshAccessToken(ctx context.Context, refreshTokenString string, userID string, ip string, userAgent string) (*TokenPair, *apierrors.AppError) {
-	// Verify the refresh token JWT signature and expiration
-	claims, appErr := ValidateRefreshToken(refreshTokenString)
-	if appErr != nil {
-		return nil, appErr
-	}
-
-	// Check if refresh token exists in database and matches
-	exists, err := repositories.TokenRepo.Exists(ctx, userID, refreshTokenString)
-
-	if err != nil {
-		logger.Log.Error("failed to query refresh token from DB", zap.Error(err))
-		return nil, apierrors.InternalError(err)
-	}
-
-	if !exists {
-		logger.Log.Warn("refresh token not found in database", zap.String("user_id", userID))
-		return nil, apierrors.UnauthorizedError("user login")
-	}
-
-	// Token is valid and exists in DB, generate new token pair
-	newTokenPair, appErr := GenerateTokenPair(ctx, claims.UserID, claims.Role, ip, userAgent)
-	if appErr != nil {
-		return nil, appErr
-	}
-
-	return newTokenPair, nil
-}

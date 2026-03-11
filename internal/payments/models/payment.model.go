@@ -33,7 +33,7 @@ type Payment struct {
 	CustomerName      string          `bun:",nullzero" json:"customer_name,omitempty"`
 	
 	// Refund tracking
-	RefundAmount      decimal.Decimal `bun:"type:decimal(12,2),nullzero" json:"refund_amount,omitempty"`
+	RefundAmount      *decimal.Decimal `bun:"type:decimal(12,2),nullzero" json:"refund_amount,omitempty"`
 	RefundReason      string          `bun:",nullzero" json:"refund_reason,omitempty"`
 
 	Metadata          map[string]any  `bun:"type:jsonb,nullzero" json:"metadata,omitempty"`

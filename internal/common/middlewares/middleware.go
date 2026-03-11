@@ -1,6 +1,7 @@
 package middlewares
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"strings"
@@ -10,8 +11,10 @@ import (
 	"github.com/alibaba0010/postgres-api/internal/common/dto"
 	"github.com/alibaba0010/postgres-api/internal/common/errors"
 	"github.com/alibaba0010/postgres-api/internal/common/logger"
+	"github.com/alibaba0010/postgres-api/internal/common/guards"
 	"github.com/alibaba0010/postgres-api/internal/utils"
 	"go.uber.org/zap"
+	"github.com/google/uuid"
 )
 
 // Recover returns the existing recover middleware from errors package
@@ -22,6 +25,23 @@ func Recover() func(http.Handler) http.Handler {
 // RequestLogger returns the existing request logger middleware
 func RequestLogger() func(http.Handler) http.Handler {
 	return logger.Logger
+}
+
+type ContextKey string
+const RequestIDKey ContextKey = "request_id"
+
+// RequestID adds a unique ID to each request - Issue 5.1
+func RequestID(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestID := r.Header.Get("X-Request-ID")
+		if requestID == "" {
+			requestID = uuid.New().String()
+		}
+
+		ctx := context.WithValue(r.Context(), RequestIDKey, requestID)
+		w.Header().Set("X-Request-ID", requestID)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
 }
 
 // CORS returns a middleware that sets common CORS headers and handles preflight requests.
@@ -45,7 +65,6 @@ func CORS(allowedOrigin string) func(http.Handler) http.Handler {
 					shouldAllow = true
 				}
 			}
-
 			// Handle CORS rejection for non-allowed origins
 			if !shouldAllow && origin != "" && allowedOrigin != "*" && allowedOrigin != "" {
 				logger.Log.Warn("CORS policy violation", zap.String("origin", origin), zap.String("allowed", allowedOrigin), zap.String("path", r.URL.Path))
@@ -69,7 +88,15 @@ func CORS(allowedOrigin string) func(http.Handler) http.Handler {
 			}
 
 			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
-			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With, X-Turnstile-Token, cf-turnstile-response")
+			
+			// Production fix: Mirror requested headers instead of hardcoding
+			reqHeaders := r.Header.Get("Access-Control-Request-Headers")
+			if reqHeaders != "" {
+				w.Header().Set("Access-Control-Allow-Headers", reqHeaders)
+			} else {
+				w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With, X-Turnstile-Token, cf-turnstile-response")
+			}
+			
 			w.Header().Set("Access-Control-Allow-Credentials", "true")
 
 			if r.Method == http.MethodOptions {
@@ -186,22 +213,26 @@ func RateLimit(rate int, burst int) func(http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			now := time.Now()
 			ip := utils.ExtractClientIP(r)
+			key := ip
+			if user := guards.ExtractAuthenticatedUser(r); user != nil {
+				key = ip + ":" + user.UserID
+			}
 
 			// Try to get existing bucket with read lock
 			mu.RLock()
-			ub, exists := buckets[ip]
+			ub, exists := buckets[key]
 			mu.RUnlock()
 
 			if !exists {
 				// Create new bucket with write lock
 				mu.Lock()
 				// Double check after acquiring write lock
-				ub, exists = buckets[ip]
+				ub, exists = buckets[key]
 				if !exists {
 					ub = &userBucket{
 						tb: NewTokenBucket(rate, burst),
 					}
-					buckets[ip] = ub
+					buckets[key] = ub
 				}
 				mu.Unlock()
 			}

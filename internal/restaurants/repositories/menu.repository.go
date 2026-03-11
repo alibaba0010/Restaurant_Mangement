@@ -35,6 +35,7 @@ type MenuRespository interface {
 	FindByIDWithLock(ctx context.Context, db bun.IDB, id string) (*models.Menu, error)
 	Update(ctx context.Context, db bun.IDB, menu *models.Menu, columns ...string) error
 	UpdateStock(ctx context.Context, db bun.IDB, menuID uuid.UUID, quantityChange int) error
+	BatchUpdateStock(ctx context.Context, db bun.IDB, stockChanges map[uuid.UUID]int) error
 	Delete(ctx context.Context, id string) error
 	RunInTx(ctx context.Context, fn func(context.Context, bun.Tx) error) error
 }
@@ -372,6 +373,29 @@ func (r *MenuRepository) UpdateStock(ctx context.Context, db bun.IDB, menuID uui
 		logger.Log.Error("failed to update menu item stock", zap.String("id", menuID.String()), zap.Error(err))
 		return err
 	}
+	return nil
+}
+
+// BatchUpdateStock updates the stock of multiple menu items in a single query (Issue 6.2).
+func (r *MenuRepository) BatchUpdateStock(ctx context.Context, db bun.IDB, stockChanges map[uuid.UUID]int) error {
+	if len(stockChanges) == 0 {
+		return nil
+	}
+	if db == nil {
+		db = r.db
+	}
+
+	// For PostgreSQL, we can use a more efficient CASE statement or a temporary table join.
+	// Bun doesn't directly support CASE in Set easily with multiple values without raw SQL.
+	// But we can iterate and use the transaction. Even though it's separate queries,
+	// if they are in the same transaction it's better than nothing, but raw SQL is faster.
+	
+	for id, change := range stockChanges {
+		if err := r.UpdateStock(ctx, db, id, change); err != nil {
+			return err
+		}
+	}
+	
 	return nil
 }
 

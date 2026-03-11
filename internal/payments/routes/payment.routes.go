@@ -3,6 +3,8 @@ package routes
 import (
 	"github.com/alibaba0010/postgres-api/internal/common/events"
 	"github.com/alibaba0010/postgres-api/internal/common/guards"
+	"github.com/alibaba0010/postgres-api/internal/database"
+	"github.com/alibaba0010/postgres-api/internal/orders/repositories"
 	"github.com/alibaba0010/postgres-api/internal/payments/controllers"
 	"github.com/alibaba0010/postgres-api/internal/payments/services"
 	"github.com/gorilla/mux"
@@ -10,8 +12,8 @@ import (
 
 func RegisterPaymentRoutes(r *mux.Router) {
 	producer := events.GetGlobalProducer()
-	
-	svc := services.NewPaymentService(producer)
+	orderRepo := repositories.NewOrderRepository(database.DB)
+	svc := services.NewPaymentService(producer, orderRepo)
 	ctrl := controllers.NewPaymentController(svc)
 	
 	paymentRouter := r.PathPrefix("/payments").Subrouter()

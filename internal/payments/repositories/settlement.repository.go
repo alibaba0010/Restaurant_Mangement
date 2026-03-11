@@ -8,10 +8,10 @@ import (
 )
 
 type SettlementRepository struct {
-	db *bun.DB
+	db bun.IDB
 }
 
-func NewSettlementRepository(db *bun.DB) *SettlementRepository {
+func NewSettlementRepository(db bun.IDB) *SettlementRepository {
 	return &SettlementRepository{db: db}
 }
 

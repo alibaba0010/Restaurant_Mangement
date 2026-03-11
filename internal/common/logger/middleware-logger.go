@@ -2,7 +2,6 @@ package logger
 
 import (
 	"context"
-	"log"
 	"net"
 	"net/http"
 	"strings"
@@ -107,7 +106,6 @@ func ExtractClientIP(request *http.Request) string {
 	if err != nil {
 		return request.RemoteAddr
 	}
-	log.Println("Client IP....................", host)
 	return host
 }
 	// // Fall back to RemoteAddr

@@ -13,15 +13,8 @@ import (
 	httpSwagger "github.com/swaggo/http-swagger"
 )
 
-func ApiRouter() *mux.Router {
+func ApiRouter(allowedOrigin string) http.Handler {
 	route := mux.NewRouter()
-	// Add recovery, logging, CORS and rate-limit middlewares
-
-	route.Use(middlewares.Recover())
-	route.Use(middlewares.RequestLogger())
-
-	// global rate limit: 100 req/sec, burst 200 (tune as needed)
-	route.Use(middlewares.RateLimit(100, 200))
 
 	// Serve Swagger UI at /swagger/
 	route.PathPrefix("/swagger/").Handler(httpSwagger.WrapHandler)
@@ -45,5 +38,22 @@ func ApiRouter() *mux.Router {
 		errors.ErrorResponse(writer, request, errors.RouteNotExist())
 	})
 
-	return route
+	var handler http.Handler = route
+
+	// global rate limit: 100 req/sec, burst 200 (tune as needed)
+	handler = middlewares.RateLimit(100, 200)(handler)
+	
+	// Issue 5.1: Request ID for tracing
+	handler = middlewares.RequestID(handler)
+	
+	// Priority 3: Logging
+	handler = middlewares.RequestLogger()(handler)
+	
+	// Priority 2: Recovery should be next to handle any panics in downstream loggers or handlers
+	handler = middlewares.Recover()(handler)
+	
+	// Priority 1: CORS should be the absolute first middleware to handle OPTIONS preflight
+	handler = middlewares.CORS(allowedOrigin)(handler)
+
+	return handler
 }

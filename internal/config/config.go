@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"strings"
 	"sync"
@@ -57,6 +58,7 @@ type Config struct {
 	TURNSTILE_SITE_KEY      string
 	TURNSTILE_SECRET_KEY    string
 	APP_ENV 				string
+	PlatformCommissionRate  float64
 }
 
 func LoadConfig() Config {
@@ -106,6 +108,7 @@ func LoadConfig() Config {
 			TURNSTILE_SITE_KEY:      getEnv("TURNSTILE_SITE_KEY", ""),
 			TURNSTILE_SECRET_KEY:    getEnv("TURNSTILE_SECRET_KEY", ""),
 			APP_ENV:                 getEnv("APP_ENV", "development"),
+			PlatformCommissionRate:  getEnvFloat("PLATFORM_COMMISSION_RATE", 0.10),
 		}
 	})
 	return cfg
@@ -119,4 +122,16 @@ func getEnv(key, fallback string) string {
 		return val
 	}
 	return fallback
+}
+func getEnvFloat(key string, fallback float64) float64 {
+	val := getEnv(key, "")
+	if val == "" {
+		return fallback
+	}
+	var f float64
+	fmt.Sscanf(val, "%f", &f)
+	if f == 0 && val != "0" && val != "0.0" {
+		return fallback
+	}
+	return f
 }

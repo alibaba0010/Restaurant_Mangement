@@ -13,7 +13,7 @@ import (
 )
 
 type Order struct {
-	bun.BaseModel `bun:"table:orders"`
+	bun.BaseModel `bun:"table:orders,alias:o"`
 
 	ID              uuid.UUID    `bun:"type:uuid,pk,default:gen_random_uuid()" json:"id"`
 	UserID          uuid.UUID    `bun:"type:uuid,notnull" json:"user_id"`

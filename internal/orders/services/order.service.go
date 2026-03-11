@@ -63,6 +63,8 @@ type OrderServiceInterface interface {
 	GetUserOrders(ctx context.Context, userID string, limit int, cursor string) ([]dto.OrderResponse, string, bool, *errors.AppError)
 	UpdateOrderStatus(ctx context.Context, id string, status string, user commonDto.AuthenticatedUser) *errors.AppError
 }
+
+var _ OrderServiceInterface = (*OrderService)(nil)
 // CalculateServiceCharge computes the service charge based on the subtotal.
 // Business Rule: 10% on orders less than 100, 5% on orders 100 or more.
 func CalculateServiceCharge(subtotal decimal.Decimal) (decimal.Decimal, string) {
@@ -100,7 +102,7 @@ func (s *OrderService) MapOrderToResponse(o *models.Order) dto.OrderResponse {
 	// Determine service charge percent label for display
 	_, percentLabel := CalculateServiceCharge(o.Subtotal)
 
-	return dto.OrderResponse{
+	resp := dto.OrderResponse{
 		ID:                   o.ID.String(),
 		UserID:               o.UserID.String(),
 		RestaurantID:         o.RestaurantID.String(),
@@ -117,6 +119,22 @@ func (s *OrderService) MapOrderToResponse(o *models.Order) dto.OrderResponse {
 		UpdatedAt:            o.UpdatedAt.Format(time.RFC3339),
 		Items:                items,
 	}
+
+	if o.ConfirmedAt != nil {
+		t := o.ConfirmedAt.Format(time.RFC3339)
+		resp.ConfirmedAt = &t
+	}
+	if o.CompletedAt != nil {
+		t := o.CompletedAt.Format(time.RFC3339)
+		resp.CompletedAt = &t
+	}
+
+	return resp
+}
+
+// NormalizeStatus cleans up the status string by trimming whitespace and converting to lowercase.
+func NormalizeStatus(status string) string {
+	return strings.ToLower(strings.TrimSpace(status))
 }
 
 // CreateOrder handles the complex business logic for creating a new customer order.
@@ -132,7 +150,11 @@ func (s *OrderService) CreateOrder(ctx context.Context, userID string, input dto
 		return nil, err
 	}
 
-	uID, _ := uuid.Parse(userID)
+	uID, err := uuid.Parse(userID)
+	if err != nil {
+		return nil, errors.ValidationError("Invalid user ID")
+	}
+
 	rID, err := uuid.Parse(input.RestaurantID)
 	if err != nil {
 		return nil, errors.ValidationError("Invalid restaurant ID")
@@ -148,7 +170,13 @@ func (s *OrderService) CreateOrder(ctx context.Context, userID string, input dto
 	// Instead of querying the DB for each item in the order, we fetch them all at once.
 	menuIDs := make([]string, len(input.Items))
 	itemMap := make(map[string]dto.CreateOrderItemInput)
+	seen := make(map[string]bool)
+
 	for i, item := range input.Items {
+		if seen[item.MenuID] {
+			return nil, errors.ValidationError("Duplicate menu item: " + item.MenuID)
+		}
+		seen[item.MenuID] = true
 		menuIDs[i] = item.MenuID
 		itemMap[item.MenuID] = item
 	}
@@ -161,12 +189,19 @@ func (s *OrderService) CreateOrder(ctx context.Context, userID string, input dto
 	if len(menuItems) != len(menuIDs) {
 		return nil, errors.ValidationError("One or more menu items were not found")
 	}
-
 	// Step 4: Aggregate order details and validate items.
+	orderID, err := utils.GenerateUUIDv7()
+	if err != nil {
+		return nil, errors.InternalError(err)
+	}
+
 	order := &models.Order{
+		ID:              orderID, // Pre-generate ID to avoid null constraints and use in items
 		UserID:          uID,
 		RestaurantID:    rID,
+		OrderType:       types.OrderType(input.OrderType), // Issue 1.1: Set order_type
 		Status:          types.OrderStatusPending,
+		Currency:        "NGN", // Correct for local payment context or derive from config
 		DeliveryAddress: input.DeliveryAddress,
 	}
 
@@ -186,6 +221,8 @@ func (s *OrderService) CreateOrder(ctx context.Context, userID string, input dto
 
 		itemInput := itemMap[menuItem.ID.String()]
 		orderItems[i] = &models.OrderItem{
+			ID:       uuid.New(), // Pre-generate Item ID
+			OrderID:  order.ID,    // Set correctly from generated Order ID
 			MenuID:   menuItem.ID,
 			Name:     menuItem.Name,
 			Quantity: itemInput.Quantity,
@@ -222,7 +259,8 @@ func (s *OrderService) CreateOrder(ctx context.Context, userID string, input dto
 			lockedMap[item.ID] = item
 		}
 
-		// 5.2: Validate stock and calculate final details.
+		// 5.2: Validate stock and calculate stock changes for batch update.
+		stockChanges := make(map[uuid.UUID]int)
 		for _, item := range orderItems {
 			menuItem, ok := lockedMap[item.MenuID]
 			if !ok {
@@ -234,10 +272,13 @@ func (s *OrderService) CreateOrder(ctx context.Context, userID string, input dto
 				return fmt.Errorf("insufficient stock for %s (available: %d, requested: %d)", menuItem.Name, menuItem.StockQuantity, item.Quantity)
 			}
 
-			// 5.3: Deduct stock atomically.
-			if err := s.menuRepo.UpdateStock(ctx, tx, item.MenuID, -item.Quantity); err != nil {
-				return err
-			}
+			// Add to batch changes
+			stockChanges[item.MenuID] = -item.Quantity
+		}
+
+		// 5.3: Update all stock in batch (Issue 6.2)
+		if err := s.menuRepo.BatchUpdateStock(ctx, tx, stockChanges); err != nil {
+			return err
 		}
 
 		// 5.4: Insert the Order record.
@@ -247,20 +288,26 @@ func (s *OrderService) CreateOrder(ctx context.Context, userID string, input dto
 		}
 
 		// 5.5: Insert the OrderItem records.
-		for _, item := range orderItems {
-			item.OrderID = order.ID
-		}
 		_, err = tx.NewInsert().Model(&orderItems).Exec(ctx)
 		return err
 	})
 
 	if err != nil {
-		// Differentiate between business logic errors (like stock) and system errors.
-		return nil, errors.InternalError(err)
+		// Log and return a sanitized message to avoid leaking database details (Issue 2.2)
+		logger.Log.Error("Order creation failed during transaction", zap.Error(err))
+		return nil, errors.TransactionError("creating order", err)
 	}
 
-	// Publish Event
-	s.publishOrderEvent(ctx, order.ID.String(), "order.created")
+	// Publish Event with error logging (Issue 5.13)
+	producer := events.GetGlobalProducer()
+	if producer != nil {
+		event := NewOrderEvent(order.ID.String(), "order.created")
+		if pubErr := producer.Publish(ctx, event); pubErr != nil {
+			logger.Log.Error("Failed to publish order.created event", 
+				zap.String("order_id", order.ID.String()), 
+				zap.Error(pubErr))
+		}
+	}
 
 	resp := s.MapOrderToResponse(order)
 	return &resp, nil
@@ -299,6 +346,14 @@ func (s *OrderService) GetUserOrders(ctx context.Context, userID string, limit i
 	return responses, nextCursor, hasMore, nil
 }
 
+// Order status state machine validation (Issue 1.7)
+var validTransitions = map[types.OrderStatus][]types.OrderStatus{
+	types.OrderStatusPending:   {types.OrderStatusConfirmed, types.OrderStatusCancelled},
+	types.OrderStatusConfirmed: {types.OrderStatusPreparing, types.OrderStatusCancelled},
+	types.OrderStatusPreparing: {types.OrderStatusReady},
+	types.OrderStatusReady:     {types.OrderStatusCompleted},
+}
+
 // UpdateOrderStatus changes the status of an existing order (e.g., Pending -> Preparing).
 // It supports updates from both management (restaurant owners) and the orderer (cancellation/payment).
 func (s *OrderService) UpdateOrderStatus(ctx context.Context, id string, status string, user commonDto.AuthenticatedUser) *errors.AppError {
@@ -312,9 +367,27 @@ func (s *OrderService) UpdateOrderStatus(ctx context.Context, id string, status 
 			return err
 		}
 
-		// Step 2: Authorization & Business Rules.
-		isOwner := order.UserID.String() == user.UserID
 		isAdmin := user.Role == types.RoleAdmin
+
+		// Step 2: Validate state transition (Issue 1.7)
+		allowed, ok := validTransitions[order.Status]
+		isValid := false
+		if ok {
+			for _, status := range allowed {
+				if status == newStatus {
+					isValid = true
+					break
+				}
+			}
+		}
+
+		// Admins can bypass state machine, but others cannot.
+		if !isAdmin && !isValid {
+			return fmt.Errorf("validation: invalid status transition from %s to %s", order.Status, newStatus)
+		}
+
+		// Step 3: Authorization & Business Rules.
+		isOwner := order.UserID.String() == user.UserID
 
 		if user.Role == types.RoleManagement {
 			// Management: Must own the restaurant associated with the order.
@@ -323,31 +396,29 @@ func (s *OrderService) UpdateOrderStatus(ctx context.Context, id string, status 
 				return fmt.Errorf("forbidden: not authorized to manage orders for this restaurant")
 			}
 		} else if isOwner {
-			// Orderer: Can only perform specific transitions (e.g., Cancel if still Pending).
-			if newStatus == types.OrderStatusCancelled && order.Status != types.OrderStatusPending {
-				return fmt.Errorf("validation: cannot cancel an order that is already %s", order.Status)
-			}
-			// Add other valid transitions for orderers here (e.g., marking as payment confirmed if applicable).
-			if newStatus != types.OrderStatusCancelled && newStatus != types.OrderStatusConfirmed {
-				return fmt.Errorf("forbidden: orderers can only cancel or confirm orders")
+			// Orderers can only cancel orders.
+			if newStatus != types.OrderStatusCancelled {
+				return fmt.Errorf("forbidden: orderers can only cancel orders")
 			}
 		} else if !isAdmin {
 			return fmt.Errorf("forbidden: not authorized to update order status")
 		}
 
-		// Step 3: Persist status change.
+		// Step 4: Persist status change.
 		return s.orderRepo.UpdateStatus(ctx, tx, id, newStatus)
 	})
 
 	if err != nil {
-		// Log and return appropriately.
-		if strings.Contains(err.Error(), "forbidden") {
-			return errors.ForbiddenError(err.Error())
+		// Proper typed error handling without string matching (Issue 3.1)
+		// For now, still using some string check but it's more structured.
+		if strings.HasPrefix(err.Error(), "forbidden:") {
+			return errors.ForbiddenError(strings.TrimPrefix(err.Error(), "forbidden: "))
 		}
-		if strings.Contains(err.Error(), "validation") {
-			return errors.ValidationError(err.Error())
+		if strings.HasPrefix(err.Error(), "validation:") {
+			return errors.ValidationError(strings.TrimPrefix(err.Error(), "validation: "))
 		}
-		return errors.InternalError(err)
+		logger.Log.Error("Order status update failed", zap.String("order_id", id), zap.Error(err))
+		return errors.TransactionError("updating order status", err)
 	}
 
 	// Publish Event

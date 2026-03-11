@@ -53,7 +53,7 @@ func (r *OrderRepository) FindByID(ctx context.Context, id string) (*models.Orde
 		Relation("OrderItems").
 		Relation("Restaurant").
 		Relation("User").
-		Where("order.id = ?", id).
+		Where("o.id = ?", id).
 		Scan(ctx)
 
 	if err != nil {
@@ -77,7 +77,7 @@ func (r *OrderRepository) FindByIDWithLock(ctx context.Context, db bun.IDB, id s
 		Relation("OrderItems").
 		Relation("Restaurant").
 		Relation("User").
-		Where("order.id = ?", id).
+		Where("o.id = ?", id).
 		For("UPDATE").
 		Scan(ctx)
 
