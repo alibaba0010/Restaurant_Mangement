@@ -23,6 +23,12 @@ type TurnstileResponse struct {
 	Cdata       string    `json:"cdata"`
 }
 
+var (
+	turnstileHttpClient = &http.Client{
+		Timeout: 5 * time.Second,
+	}
+)
+
 // VerifyTurnstileToken verifies the provided token with Cloudflare Turnstile API
 func VerifyTurnstileToken(token string, remoteIP string) (bool, error) {
 	cfg := config.LoadConfig()
@@ -41,11 +47,7 @@ func VerifyTurnstileToken(token string, remoteIP string) (bool, error) {
 		data.Set("remoteip", remoteIP)
 	}
 
-	client := &http.Client{
-		Timeout: 10 * time.Second,
-	}
-
-	resp, err := client.PostForm(turnstileVerifyURL, data)
+	resp, err := turnstileHttpClient.PostForm(turnstileVerifyURL, data)
 	if err != nil {
 		logger.Log.Error("failed to call Turnstile API", zap.Error(err))
 		return false, err

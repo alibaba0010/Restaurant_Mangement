@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"strings"
 
 	"github.com/alibaba0010/postgres-api/internal/common/errors"
 	"github.com/alibaba0010/postgres-api/internal/common/guards"
@@ -66,6 +67,7 @@ func (c *PaymentController) InitiatePayment(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(resp)
 }
@@ -96,6 +98,7 @@ func (c *PaymentController) VerifyPayment(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(resp)
 }
@@ -112,10 +115,12 @@ func (c *PaymentController) WebhookHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	// Normalize header keys to lowercase so providers can look them up
+	// consistently (Go's http.Header stores keys in canonical PascalCase).
 	headers := make(map[string]string)
 	for k, v := range r.Header {
 		if len(v) > 0 {
-			headers[k] = v[0]
+			headers[strings.ToLower(k)] = v[0]
 		}
 	}
 

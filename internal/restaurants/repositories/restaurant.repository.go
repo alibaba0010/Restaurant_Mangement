@@ -55,10 +55,14 @@ func (r *RestaurantRepository) Create(ctx context.Context, restaurant *models.Re
 	return nil
 }
 
-// FindByID retrieves a restaurant by its ID from the database
+// FindByID retrieves a restaurant by its ID, including its addresses.
 func (r *RestaurantRepository) FindByID(ctx context.Context, id string) (*models.Restaurant, error) {
 	restaurant := new(models.Restaurant)
-	err := r.db.NewSelect().Model(restaurant).Where("id = ?", id).Scan(ctx)
+	err := r.db.NewSelect().
+		Model(restaurant).
+		Where("restaurant.id = ?", id).
+		Relation("Addresses").
+		Scan(ctx)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, err

@@ -20,6 +20,7 @@ type Coordinates struct {
 
 // AddressInput represents a simplified physical address structure used for formatting and validation.
 type AddressInput struct {
+	ID       string `json:"id,omitempty" validate:"omitempty,uuid"`
 	Address  string `json:"address" validate:"required"`
 	City     string `json:"city" validate:"required"`
 	Country  string `json:"country" validate:"required"`
@@ -29,16 +30,16 @@ type AddressInput struct {
 // Address Service defines the interface for address related operations.
 type AddressService interface {
 	// Geocode converts a free-form address string to coordinates and returns the formatted address.
-	Geocode(ctx context.Context, fullAddress string) (*Coordinates, string, *errors.AppError)
+	Geocode(ctx context.Context, fullAddress string) (*Coordinates, string, error)
 
 	// ReverseGeocode converts coordinates to a formatted address string.
-	ReverseGeocode(ctx context.Context, lat, lng float64) (string, *errors.AppError)
+	ReverseGeocode(ctx context.Context, lat, lng float64) (string, error)
 
 	// Format validates and formats an address structure into a formatted string.
-	Format(addr AddressInput) (string, *errors.AppError)
+	Format(addr AddressInput) (string, error)
 
 	// ProcessAddress formats the address and geocodes it to get coordinates.
-	ProcessAddress(ctx context.Context, addrInput *AddressInput) (string, float64, float64, *errors.AppError)
+	ProcessAddress(ctx context.Context, addrInput *AddressInput) (string, float64, float64, error)
 }
 
 type addressService struct {
@@ -54,7 +55,7 @@ func NewService() AddressService {
 	}
 }
 
-func (s *addressService) Geocode(ctx context.Context, fullAddress string) (*Coordinates, string, *errors.AppError) {
+func (s *addressService) Geocode(ctx context.Context, fullAddress string) (*Coordinates, string, error) {
 	if fullAddress == "" {
 		return nil, "", errors.BadRequestError("Address field should not be empty")
 	}
@@ -82,7 +83,7 @@ func (s *addressService) Geocode(ctx context.Context, fullAddress string) (*Coor
 	}, formattedAddress, nil
 }
 
-func (s *addressService) ReverseGeocode(ctx context.Context, lat, lng float64) (string, *errors.AppError) {
+func (s *addressService) ReverseGeocode(ctx context.Context, lat, lng float64) (string, error) {
 	addr, err := s.geocoder.ReverseGeocode(lat, lng)
 	if err != nil {
 		logger.Log.Error("reverse geocoding failed", zap.Error(err))
@@ -96,7 +97,7 @@ func (s *addressService) ReverseGeocode(ctx context.Context, lat, lng float64) (
 	return addr.FormattedAddress, nil
 }
 
-func (s *addressService) Format(addr AddressInput) (string, *errors.AppError) {
+func (s *addressService) Format(addr AddressInput) (string, error) {
 	// Convert AddressInput to Boostport/address Address struct
 	bpAddr := address.Address{
 		StreetAddress: []string{addr.Address},
@@ -127,7 +128,7 @@ func (s *addressService) Format(addr AddressInput) (string, *errors.AppError) {
 
 // ProcessAddress formats the address and geocodes it to get coordinates.
 // Returns formatted address, latitude, longitude, and error.
-func (s *addressService) ProcessAddress(ctx context.Context, addrInput *AddressInput) (string, float64, float64, *errors.AppError) {
+func (s *addressService) ProcessAddress(ctx context.Context, addrInput *AddressInput) (string, float64, float64, error) {
 	// Format the address structure
 	fmtStr, err := s.Format(*addrInput)
 	if err != nil {

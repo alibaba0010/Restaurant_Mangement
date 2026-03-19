@@ -84,4 +84,5 @@ type PaymentWebhookLog struct {
 	ErrorMessage        string          `bun:",nullzero" json:"error_message,omitempty"`
 	
 	CreatedAt           time.Time       `bun:",nullzero,notnull,default:current_timestamp" json:"created_at"`
+	UpdatedAt           time.Time       `bun:",nullzero,notnull,default:current_timestamp" json:"updated_at"`
 }

@@ -13,7 +13,7 @@ import (
 )
 
 var (
-	cfg  Config
+	cfg  *Config
 	once sync.Once
 )
 
@@ -61,13 +61,13 @@ type Config struct {
 	PlatformCommissionRate  float64
 }
 
-func LoadConfig() Config {
+func LoadConfig() *Config {
 	once.Do(func() {
 		err := godotenv.Load()
 		if err != nil {
 			logger.Log.Warn("No .env file found, using system environment variables", zap.Error(err))
 		}
-		cfg = Config{
+		cfg = &Config{
 			Port:                    getEnv("PORT", "8001"),
 			DB_HOST:                 getEnv("DB_HOST", "localhost"),
 			DB_PORT:                 "5432",

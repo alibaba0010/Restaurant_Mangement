@@ -20,6 +20,7 @@ import (
 	"github.com/alibaba0010/postgres-api/internal/orders"
 	"github.com/alibaba0010/postgres-api/internal/restaurants"
 	"github.com/alibaba0010/postgres-api/internal/routes"
+    "github.com/alibaba0010/postgres-api/internal/notifications"
 )
 
 func main() {
@@ -43,7 +44,7 @@ func main() {
     defer cancel()
 
     // Initialize Redpanda
-    producer, consumer, err := events.InitializeRedpanda(ctx, cfg)
+    producer, consumer, err := events.InitializeRedpanda(ctx, *cfg)
     if err != nil {
         logger.Log.Fatal("Failed to initialize Redpanda Consumer after retries", zap.Error(err))
     }
@@ -57,6 +58,7 @@ func main() {
     // Register Module Subscribers
     orders.RegisterSubscribers(consumer)
     restaurants.RegisterSubscribers(consumer)
+    notifications.RegisterSubscribers(consumer)
 
     // Start Consumer with graceful shutdown
     consumerDone := make(chan error, 1)

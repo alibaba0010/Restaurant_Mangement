@@ -254,3 +254,37 @@ func (fw *FlutterwaveProvider) ValidateWebhook(ctx context.Context, body []byte,
 	// For production, you should use the secret hash configured in dashboard
 	return signature == fw.encryptionKey, nil
 }
+
+func (fw *FlutterwaveProvider) ParseWebhook(payload []byte) (*VerifyResponse, error) {
+	var event struct {
+		Event string `json:"event"`
+		Data  struct {
+			ID           int64                  `json:"id"`
+			TxRef        string                 `json:"tx_ref"`
+			FlwRef       string                 `json:"flw_ref"`
+			Amount       float64                `json:"amount"`
+			Currency     string                 `json:"currency"`
+			Status       string                 `json:"status"`
+			Customer     struct {
+				Email string `json:"email"`
+			} `json:"customer"`
+			Metadata map[string]interface{} `json:"meta"`
+		} `json:"data"`
+	}
+
+	if err := json.Unmarshal(payload, &event); err != nil {
+		return nil, err
+	}
+
+	return &VerifyResponse{
+		Status:            event.Data.Status,
+		Amount:            decimal.NewFromFloat(event.Data.Amount),
+		Currency:          event.Data.Currency,
+		Reference:         event.Data.TxRef,
+		ExternalReference: event.Data.FlwRef,
+		CustomerEmail:     event.Data.Customer.Email,
+		Success:           event.Data.Status == "successful" || event.Event == "charge.completed",
+		Metadata:          event.Data.Metadata,
+	}, nil
+}
+

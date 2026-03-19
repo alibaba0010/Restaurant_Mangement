@@ -179,7 +179,7 @@ func (r *MenuRepository) FindAll(ctx context.Context, limit int, cursorStr strin
 	}
 
 	if categoryID != "" {
-		sel = sel.Where("category_id = ?", categoryID)
+		sel = sel.Where("EXISTS (SELECT 1 FROM menu_category_joins WHERE menu_id = menu.id AND category_id = ?)", categoryID)
 	}
 
 	if len(tags) > 0 {

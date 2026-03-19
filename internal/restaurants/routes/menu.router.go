@@ -63,7 +63,7 @@ func MenuRoutes(route *mux.Router) {
 	management.HandleFunc("/{id}", menuController.DeleteMenuHandler).Methods("DELETE")
 
 	// 2. Public Routes
-	menus.Handle("", middlewares.RateLimit(5, 10)(http.HandlerFunc(menuController.ListMenusHandler))).Methods("GET")
+	menus.Handle("", guards.TurnstileMiddleware(middlewares.RateLimit(5, 10)(http.HandlerFunc(menuController.ListMenusHandler)))).Methods("GET")
 	
 	// Generic Public Route (ID-based) - defined LAST
 	menus.HandleFunc("/{id}", menuController.GetMenuHandler).Methods("GET")

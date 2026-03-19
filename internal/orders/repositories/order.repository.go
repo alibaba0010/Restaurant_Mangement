@@ -99,12 +99,12 @@ func (r *OrderRepository) FindByUserID(ctx context.Context, userID string, limit
 		Relation("OrderItems").
 		Relation("Restaurant").
 		Relation("User").
-		Where("user_id = ?", userID).
-		Order("created_at DESC").
+		Where("o.user_id = ?", userID).
+		Order("o.created_at DESC").
 		Limit(limit + 1)
 
 	if cursor != "" {
-		query.Where("created_at < ?", cursor)
+		query.Where("o.created_at < ?", cursor)
 	}
 
 	err := query.Scan(ctx)
@@ -130,12 +130,12 @@ func (r *OrderRepository) FindByRestaurantID(ctx context.Context, restaurantID s
 		Model(&orders).
 		Relation("OrderItems").
 		Relation("User").
-		Where("restaurant_id = ?", restaurantID).
-		Order("created_at DESC").
+		Where("o.restaurant_id = ?", restaurantID).
+		Order("o.created_at DESC").
 		Limit(limit + 1)
 
 	if cursor != "" {
-		query.Where("created_at < ?", cursor)
+		query.Where("o.created_at < ?", cursor)
 	}
 
 	err := query.Scan(ctx)

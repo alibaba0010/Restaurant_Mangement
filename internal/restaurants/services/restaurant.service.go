@@ -58,7 +58,8 @@ func (s *RestaurantService) MapToResponse(r *models.Restaurant) *dto.RestaurantR
 		ID:                r.ID.String(),
 		Name:              r.Name,
 		Description:       r.Description,
-		Address:           r.Address,
+		AddressID:         utils.GetStringFromUUID(r.AddressID),
+		Addresses:         r.Addresses,
 		AvatarURL:         r.AvatarURL,
 		Status:            string(r.Status),
 		UserID:            userIDStr,
@@ -66,8 +67,6 @@ func (s *RestaurantService) MapToResponse(r *models.Restaurant) *dto.RestaurantR
 		DeliveryAvailable: r.DeliveryAvailable,
 		TakeawayAvailable: r.TakeawayAvailable,
 		Rating:            r.Rating,
-		Latitude:          r.Latitude,
-		Longitude:         r.Longitude,
 		CreatedAt:         r.CreatedAt.Format(time.RFC3339),
 		UpdatedAt:         r.UpdatedAt.Format(time.RFC3339),
 	}
@@ -93,42 +92,42 @@ func (s *RestaurantService) CreateRestaurant(ctx context.Context, input dto.Crea
 		return nil, errors.InternalError(err)
 	}
 
-	var latitude, longitude float64
-	var formattedAddress string
+	var addrModel *address.AddressModel
 
 	// Process address through Format -> Geocode pipeline
 	if input.Address != nil {
-		fmtAddr, lat, lng, appErr := s.addressService.ProcessAddress(ctx, input.Address)
-		if appErr != nil {
-			return nil, appErr
+		fmtAddr, lat, lng, err := s.addressService.ProcessAddress(ctx, input.Address)
+		if err != nil {
+			return nil, errors.ToAppError(err)
 		}
-		formattedAddress = fmtAddr
-		latitude = lat
-		longitude = lng
+		rawAddr := input.Address.Address + ", " + input.Address.City + ", " + input.Address.Country
+		addrModel = &address.AddressModel{
+			RestaurantID:     &id,
+			FormattedAddress: fmtAddr,
+			RawAddress:       rawAddr,
+			Latitude:         lat,
+			Longitude:        lng,
+			IsDefault:        true,
+		}
+	}
+
+	userID, err := uuid.Parse(user.UserID)
+	if err != nil {
+		logger.Log.Error("failed to parse user ID", zap.Error(err))
+		return nil, errors.InternalError(err)
 	}
 
 	restaurant := &models.Restaurant{
 		ID:          id,
 		Name:        input.Name,
 		Description: input.Description,
-		Address:     formattedAddress,
-		Latitude:    latitude,
-		Longitude:   longitude,
 		AvatarURL:   input.AvatarURL,
 		Status:      types.RestaurantStatusActive,
+		UserID:      &userID,
 		CreatedAt:   time.Now(),
 		UpdatedAt:   time.Now(),
 	}
 
-	// Set the user as the owner (from authenticated user)
-	userID, err := uuid.Parse(user.UserID)
-	if err != nil {
-		logger.Log.Error("failed to parse user ID", zap.Error(err))
-		return nil, errors.InternalError(err)
-	}
-	restaurant.UserID = &userID
-
-	// Set optional fields - but ignore any UserID from input (use authenticated user only)
 	if input.Status != "" {
 		restaurant.Status = types.RestaurantStatus(input.Status)
 	}
@@ -142,10 +141,40 @@ func (s *RestaurantService) CreateRestaurant(ctx context.Context, input dto.Crea
 		restaurant.TakeawayAvailable = *input.TakeawayAvailable
 	}
 
-	err = s.repo.Create(ctx, restaurant)
+	// Run restaurant + optional address in a single transaction
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
+		return nil, errors.TransactionError("starting", err)
+	}
+	defer func() {
+		if err := tx.Rollback(); err != nil && err.Error() != "tx: already committed or rolled back" {
+			logger.Log.Error("failed to rollback transaction", zap.Error(err))
+		}
+	}()
+
+	if _, err = tx.NewInsert().Model(restaurant).Exec(ctx); err != nil {
 		logger.Log.Error("failed to create restaurant", zap.Error(err))
 		return nil, errors.InternalError(err)
+	}
+
+	if addrModel != nil {
+		// unset any previous defaults (none yet, but for consistency)
+		_, _ = tx.NewUpdate().
+			Model((*address.AddressModel)(nil)).
+			Set("is_default = false").
+			Where("restaurant_id = ?", id).
+			Exec(ctx)
+
+			if _, err = tx.NewInsert().Model(addrModel).Exec(ctx); err != nil {
+				logger.Log.Error("failed to create restaurant address", zap.Error(err))
+				return nil, errors.TransactionError("inserting restaurant address", err)
+			}
+			restaurant.AddressID = &addrModel.ID
+			restaurant.Addresses = append(restaurant.Addresses, addrModel)
+		}
+
+	if err = tx.Commit(); err != nil {
+		return nil, errors.TransactionError("committing restaurant creation", err)
 	}
 
 	return s.MapToResponse(restaurant), nil
@@ -211,7 +240,7 @@ func (s *RestaurantService) UpdateRestaurant(ctx context.Context, id string, inp
 	}()
 
 	// Apply field updates and get list of changed fields
-	fieldsToUpdate, appErr := s.applyRestaurantUpdates(ctx, restaurant, input)
+	fieldsToUpdate, appErr := s.applyRestaurantUpdates(ctx, tx, restaurant, input)
 	if appErr != nil {
 		return nil, appErr
 	}
@@ -295,9 +324,9 @@ func (s *RestaurantService) DeleteRestaurant(ctx context.Context, id string, use
 }
 	
 
-// applyRestaurantUpdates applies field updates from input to restaurant model
-// Returns the list of fields that were actually updated
-func (s *RestaurantService) applyRestaurantUpdates(ctx context.Context, restaurant *models.Restaurant, input dto.UpdateRestaurantInput) ([]string, *errors.AppError) {
+// applyRestaurantUpdates applies field updates from input to the restaurant model,
+// using the provided transaction for any address inserts.
+func (s *RestaurantService) applyRestaurantUpdates(ctx context.Context, tx bun.Tx, restaurant *models.Restaurant, input dto.UpdateRestaurantInput) ([]string, *errors.AppError) {
 	var fieldsToUpdate []string
 
 	// Update name if provided and different
@@ -318,20 +347,74 @@ func (s *RestaurantService) applyRestaurantUpdates(ctx context.Context, restaura
 		}
 	}
 
-	// Update address if provided using Format -> Geocode pipeline
+	// Update address — update existing if ID provided, or insert a new one
 	if input.Address != nil {
-		fmtAddr, lat, lng, appErr := s.addressService.ProcessAddress(ctx, input.Address)
-		if appErr != nil {
-			return nil, appErr
+		fmtAddr, lat, lng, err := s.addressService.ProcessAddress(ctx, input.Address)
+		if err != nil {
+			return nil, errors.ToAppError(err)
 		}
 
-		// Only update if the formatted address has changed
-		if fmtAddr != restaurant.Address {
-			restaurant.Address = fmtAddr
-			restaurant.Latitude = lat
-			restaurant.Longitude = lng
-			fieldsToUpdate = append(fieldsToUpdate, "address", "latitude", "longitude")
+		rawAddr := input.Address.Address + ", " + input.Address.City + ", " + input.Address.Country
+		addrModel := &address.AddressModel{
+			RestaurantID:     &restaurant.ID,
+			FormattedAddress: fmtAddr,
+			RawAddress:       rawAddr,
+			Latitude:         lat,
+			Longitude:        lng,
+			IsDefault:        true,
+			UpdatedAt:        time.Now(),
 		}
+
+		if input.Address.ID != "" {
+			// Update existing address
+			parsedAddrID, err := uuid.Parse(input.Address.ID)
+			if err != nil {
+				return nil, errors.ValidationError("invalid address ID")
+			}
+			addrModel.ID = parsedAddrID
+
+			// Verify ownership
+			exists, err := tx.NewSelect().
+				Model((*address.AddressModel)(nil)).
+				Where("id = ? AND restaurant_id = ?", parsedAddrID, restaurant.ID).
+				Exists(ctx)
+			if err != nil || !exists {
+				return nil, errors.ForbiddenError("Address not found or does not belong to restaurant")
+			}
+
+			_, err = tx.NewUpdate().
+				Model(addrModel).
+				WherePK().
+				Exec(ctx)
+			if err != nil {
+				logger.Log.Error("failed to update restaurant address", zap.Error(err))
+				return nil, errors.TransactionError("updating restaurant address", err)
+			}
+		} else {
+			// Create new address
+			addrModel.ID = uuid.New()
+			addrModel.CreatedAt = time.Now()
+
+			// Unset previous defaults for this restaurant
+			_, _ = tx.NewUpdate().
+				Model((*address.AddressModel)(nil)).
+				Set("is_default = false").
+				Where("restaurant_id = ?", restaurant.ID).
+				Exec(ctx)
+
+			if _, err := tx.NewInsert().Model(addrModel).Exec(ctx); err != nil {
+				logger.Log.Error("failed to insert restaurant address", zap.Error(err))
+				return nil, errors.TransactionError("inserting restaurant address", err)
+			}
+		}
+
+		// Update Restaurant's primary AddressID
+		restaurant.AddressID = &addrModel.ID
+		if !utils.Contains(fieldsToUpdate, "address_id") {
+			fieldsToUpdate = append(fieldsToUpdate, "address_id")
+		}
+
+		restaurant.Addresses = append(restaurant.Addresses, addrModel)
 	}
 
 	// Update avatar URL if provided and different

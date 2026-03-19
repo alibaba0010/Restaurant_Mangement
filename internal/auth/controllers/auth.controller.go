@@ -34,7 +34,7 @@ func sendAuthResponse(writer http.ResponseWriter, user *models.User, tokens *ser
 			Name:        user.Name,
 			Email:       user.Email,
 			Role:        user.Role,
-			Address:     user.Address,
+			Addresses:   user.Addresses,
 			AvatarURL:   user.AvatarURL,
 			PhoneNumber: user.PhoneNumber,
 			Status:      user.Status,

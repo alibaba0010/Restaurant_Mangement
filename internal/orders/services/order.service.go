@@ -14,6 +14,7 @@ import (
 	"github.com/alibaba0010/postgres-api/internal/orders/repositories"
 	restModels "github.com/alibaba0010/postgres-api/internal/restaurants/models"
 	restRepo "github.com/alibaba0010/postgres-api/internal/restaurants/repositories"
+	authRepo "github.com/alibaba0010/postgres-api/internal/auth/repositories"
 	"github.com/uptrace/bun"
 
 	"github.com/alibaba0010/postgres-api/internal/utils"
@@ -205,6 +206,25 @@ func (s *OrderService) CreateOrder(ctx context.Context, userID string, input dto
 		DeliveryAddress: input.DeliveryAddress,
 	}
 
+	// Senior Dev Logic: If delivery address is not provided in the request, try to fetch the 
+	// user's default address from the database to populate the "cart sheet" (order).
+	if order.OrderType == types.OrderTypeDelivery && order.DeliveryAddress == "" {
+		user, _ := authRepo.UserRepo.FindByIDWithAddresses(ctx, userID)
+		if user != nil && len(user.Addresses) > 0 {
+			// Find the default address
+			for _, addr := range user.Addresses {
+				if addr.IsDefault {
+					order.DeliveryAddress = addr.RawAddress
+					break
+				}
+			}
+			// Fallback to first address if no default is explicitly marked
+			if order.DeliveryAddress == "" {
+				order.DeliveryAddress = user.Addresses[0].RawAddress
+			}
+		}
+	}
+
 	var totalAmount decimal.Decimal = decimal.Zero
 	orderItems := make([]*models.OrderItem, len(menuItems))
 
@@ -269,7 +289,10 @@ func (s *OrderService) CreateOrder(ctx context.Context, userID string, input dto
 
 			// Business Rule: Ensure sufficient stock exists.
 			if menuItem.StockQuantity < item.Quantity {
-				return fmt.Errorf("insufficient stock for %s (available: %d, requested: %d)", menuItem.Name, menuItem.StockQuantity, item.Quantity)
+				if menuItem.StockQuantity == 0 {
+					return fmt.Errorf("outofstock: %s is currently out of stock", menuItem.Name)
+				}
+				return fmt.Errorf("outofstock: %s has insufficient stock (only %d left)", menuItem.Name, menuItem.StockQuantity)
 			}
 
 			// Add to batch changes
@@ -293,8 +316,12 @@ func (s *OrderService) CreateOrder(ctx context.Context, userID string, input dto
 	})
 
 	if err != nil {
-		// Log and return a sanitized message to avoid leaking database details (Issue 2.2)
 		logger.Log.Error("Order creation failed during transaction", zap.Error(err))
+		// Surface out-of-stock errors as a client-facing 400 ValidationError
+		if strings.HasPrefix(err.Error(), "outofstock:") {
+			msg := strings.TrimPrefix(err.Error(), "outofstock: ")
+			return nil, errors.ValidationError(msg)
+		}
 		return nil, errors.TransactionError("creating order", err)
 	}
 

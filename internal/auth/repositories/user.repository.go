@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/alibaba0010/postgres-api/internal/auth/models"
+	"github.com/alibaba0010/postgres-api/internal/common/address"
 	"github.com/alibaba0010/postgres-api/internal/database"
 	"github.com/alibaba0010/postgres-api/internal/utils"
 	"github.com/uptrace/bun"
@@ -21,6 +22,7 @@ func (r *UserRepository) Create(ctx context.Context, user *models.User) error {
 	return err
 }
 
+// FindByID retrieves a user by ID, without addresses (lightweight — use FindByIDWithAddresses when needed).
 func (r *UserRepository) FindByID(ctx context.Context, id string) (*models.User, error) {
 	user := new(models.User)
 	err := database.DB.NewSelect().Model(user).Where("id = ?", id).Scan(ctx)
@@ -30,6 +32,21 @@ func (r *UserRepository) FindByID(ctx context.Context, id string) (*models.User,
 	return user, nil
 }
 
+// FindByIDWithAddresses retrieves a user including their associated addresses.
+func (r *UserRepository) FindByIDWithAddresses(ctx context.Context, id string) (*models.User, error) {
+	user := new(models.User)
+	err := database.DB.NewSelect().
+		Model(user).
+		Where("id = ?", id).
+		Relation("Addresses").
+		Scan(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return user, nil
+}
+
+// FindByEmail retrieves a user by email (without addresses for speed on auth path).
 func (r *UserRepository) FindByEmail(ctx context.Context, email string) (*models.User, error) {
 	user := new(models.User)
 	err := database.DB.NewSelect().Model(user).Where("email = ?", email).Scan(ctx)
@@ -53,6 +70,49 @@ func (r *UserRepository) Update(ctx context.Context, db bun.IDB, user *models.Us
 		q = q.Column(columns...)
 	}
 	_, err := q.Exec(ctx)
+	return err
+}
+
+// InsertAddress inserts a new address record within the given transaction (or DB if tx is nil).
+func (r *UserRepository) InsertAddress(ctx context.Context, db bun.IDB, addr *address.AddressModel) error {
+	if db == nil {
+		db = database.DB
+	}
+	_, err := db.NewInsert().Model(addr).Exec(ctx)
+	return err
+}
+
+// SetDefaultAddress marks a specific address as default and unsets all others for that user.
+func (r *UserRepository) SetDefaultAddress(ctx context.Context, db bun.IDB, userID, addressID string) error {
+	if db == nil {
+		db = database.DB
+	}
+	// Unset all defaults for this user
+	_, err := db.NewUpdate().
+		Model((*address.AddressModel)(nil)).
+		Set("is_default = false").
+		Where("user_id = ?", userID).
+		Exec(ctx)
+	if err != nil {
+		return err
+	}
+	// Set the new default
+	_, err = db.NewUpdate().
+		Model((*address.AddressModel)(nil)).
+		Set("is_default = true").
+		Where("id = ?", addressID).
+		Where("user_id = ?", userID).
+		Exec(ctx)
+	return err
+}
+
+// DeleteAddress removes an address belonging to a user.
+func (r *UserRepository) DeleteAddress(ctx context.Context, userID, addressID string) error {
+	_, err := database.DB.NewDelete().
+		Model((*address.AddressModel)(nil)).
+		Where("id = ?", addressID).
+		Where("user_id = ?", userID).
+		Exec(ctx)
 	return err
 }
 

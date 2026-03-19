@@ -22,6 +22,79 @@ const (
 	paystackTimeout    = 30 * time.Second
 )
 
+// Paystack structs
+type paystackMetadata struct {
+	Phone            string                 `json:"phone"`
+	Name             string                 `json:"name"`
+	CustomFields     map[string]interface{} `json:"custom_fields"`
+	OurTransactionID string                 `json:"our_transaction_id"`
+}
+
+type paystackInitRequest struct {
+	Amount      int64            `json:"amount"`
+	Email       string           `json:"email"`
+	Reference   string           `json:"reference"`
+	CallbackURL string           `json:"callback_url"`
+	Metadata    paystackMetadata `json:"metadata"`
+}
+
+type paystackInitResponse struct {
+	Status  bool   `json:"status"`
+	Message string `json:"message"`
+	Data    struct {
+		AuthorizationURL string `json:"authorization_url"`
+		AccessCode       string `json:"access_code"`
+		Reference        string `json:"reference"`
+	} `json:"data"`
+}
+
+type paystackVerifyResponse struct {
+	Status bool   `json:"status"`
+	Message string `json:"message"`
+	Data   struct {
+		Amount       int64  `json:"amount"`
+		Currency     string `json:"currency"`
+		Status       string `json:"status"`
+		Reference    string `json:"reference"`
+		CreatedAt    string `json:"created_at"`
+		Customer     struct {
+			Email string `json:"email"`
+			Name  string `json:"customer_code"`
+		} `json:"customer"`
+		Metadata map[string]interface{} `json:"metadata"`
+	} `json:"data"`
+}
+
+type paystackWebhookPayload struct {
+	Event string `json:"event"`
+	Data  struct {
+		Amount    int64  `json:"amount"`
+		Currency  string `json:"currency"`
+		Status    string `json:"status"`
+		Reference string `json:"reference"`
+		Customer  struct {
+			Email string `json:"email"`
+		} `json:"customer"`
+		Metadata map[string]interface{} `json:"metadata"`
+	} `json:"data"`
+}
+
+type paystackRefundRequest struct {
+	Transaction string `json:"transaction"`
+	Amount      int64  `json:"amount"`
+	Note        string `json:"note,omitempty"`
+}
+
+type paystackRefundResponse struct {
+	Status  bool   `json:"status"`
+	Message string `json:"message"`
+	Data    struct {
+		Reference string `json:"reference"`
+		Amount    int64  `json:"amount"`
+		Status    string `json:"status"`
+	} `json:"data"`
+}
+
 // PaystackProvider implements the PaymentProvider interface for Paystack
 type PaystackProvider struct {
 	apiKey string
@@ -52,16 +125,16 @@ func (p *PaystackProvider) InitializePayment(ctx context.Context, req *Initializ
 	// Paystack expects amount in kobo (cents * 100)
 	amountInKobo := req.Amount.Mul(decimal.NewFromInt(100)).IntPart()
 
-	body := map[string]interface{}{
-		"amount":       amountInKobo,
-		"email":        req.Email,
-		"reference":    req.Reference,
-		"callback_url": req.CallbackURL,
-		"metadata": map[string]interface{}{
-			"phone":              req.Phone,
-			"name":               req.Name,
-			"custom_fields":      req.Metadata,
-			"our_transaction_id": req.Reference,
+	body := paystackInitRequest{
+		Amount:      amountInKobo,
+		Email:       req.Email,
+		Reference:   req.Reference,
+		CallbackURL: req.CallbackURL,
+		Metadata: paystackMetadata{
+			Phone:            req.Phone,
+			Name:             req.Name,
+			CustomFields:     req.Metadata,
+			OurTransactionID: req.Reference,
 		},
 	}
 
@@ -70,6 +143,8 @@ func (p *PaystackProvider) InitializePayment(ctx context.Context, req *Initializ
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
+	logger.Log.Warn("Paystack request", zap.String("Reference", req.Reference), zap.Int64("amount in kobo", amountInKobo), zap.String("url", req.CallbackURL))
+	
 	request, err := http.NewRequestWithContext(ctx, "POST", paystackAPIBaseURL+"/transaction/initialize", bytes.NewBuffer(jsonBody))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
@@ -94,16 +169,7 @@ func (p *PaystackProvider) InitializePayment(ctx context.Context, req *Initializ
 		return nil, fmt.Errorf("paystack API error: status %d", resp.StatusCode)
 	}
 
-	var paystackResp struct {
-		Status  bool   `json:"status"`
-		Message string `json:"message"`
-		Data    struct {
-			AuthorizationURL string `json:"authorization_url"`
-			AccessCode       string `json:"access_code"`
-			Reference        string `json:"reference"`
-		} `json:"data"`
-	}
-
+	var paystackResp paystackInitResponse
 	if err := json.Unmarshal(respBody, &paystackResp); err != nil {
 		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
@@ -150,22 +216,7 @@ func (p *PaystackProvider) VerifyPayment(ctx context.Context, reference string) 
 		return nil, fmt.Errorf("paystack verification failed: status %d", resp.StatusCode)
 	}
 
-	var paystackResp struct {
-		Status bool `json:"status"`
-		Data   struct {
-			Amount       int64  `json:"amount"`
-			Currency     string `json:"currency"`
-			Status       string `json:"status"`
-			Reference    string `json:"reference"`
-			CreatedAt    string `json:"created_at"`
-			Customer     struct {
-				Email string `json:"email"`
-				Name  string `json:"customer_code"`
-			} `json:"customer"`
-			Metadata map[string]interface{} `json:"metadata"`
-		} `json:"data"`
-	}
-
+	var paystackResp paystackVerifyResponse
 	if err := json.Unmarshal(respBody, &paystackResp); err != nil {
 		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
@@ -178,7 +229,7 @@ func (p *PaystackProvider) VerifyPayment(ctx context.Context, reference string) 
 		Status:            paystackResp.Data.Status,
 		Amount:            decimal.NewFromInt(paystackResp.Data.Amount).Div(decimal.NewFromInt(100)), // Convert from kobo
 		Currency:          paystackResp.Data.Currency,
-		Reference:         reference, // Internal reference
+		Reference:         reference,             // Internal reference
 		ExternalReference: paystackResp.Data.Reference, // External reference
 		CustomerEmail:     paystackResp.Data.Customer.Email,
 		Success:           paystackResp.Data.Status == "success",
@@ -192,13 +243,10 @@ func (p *PaystackProvider) RefundPayment(ctx context.Context, reference string, 
 		return nil, fmt.Errorf("reference and positive amount are required")
 	}
 
-	body := map[string]interface{}{
-		"transaction": reference,
-		"amount":      amount.Mul(decimal.NewFromInt(100)).IntPart(), // Convert to kobo
-	}
-
-	if reason != "" {
-		body["note"] = reason
+	body := paystackRefundRequest{
+		Transaction: reference,
+		Amount:      amount.Mul(decimal.NewFromInt(100)).IntPart(),
+		Note:        reason,
 	}
 
 	jsonBody, err := json.Marshal(body)
@@ -230,16 +278,7 @@ func (p *PaystackProvider) RefundPayment(ctx context.Context, reference string, 
 		return nil, fmt.Errorf("paystack refund failed: status %d", resp.StatusCode)
 	}
 
-	var paystackResp struct {
-		Status  bool   `json:"status"`
-		Message string `json:"message"`
-		Data    struct {
-			Reference string `json:"reference"`
-			Amount    int64  `json:"amount"`
-			Status    string `json:"status"`
-		} `json:"data"`
-	}
-
+	var paystackResp paystackRefundResponse
 	if err := json.Unmarshal(respBody, &paystackResp); err != nil {
 		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
@@ -264,4 +303,31 @@ func (p *PaystackProvider) ValidateWebhook(ctx context.Context, body []byte, hea
 	computedSignature := hex.EncodeToString(hash.Sum(nil))
 
 	return hmac.Equal([]byte(signature), []byte(computedSignature)), nil
+}
+
+// ParseWebhook parses Paystack webhook payload
+func (p *PaystackProvider) ParseWebhook(payload []byte) (*VerifyResponse, error) {
+	var event paystackWebhookPayload
+	if err := json.Unmarshal(payload, &event); err != nil {
+		return nil, err
+	}
+
+	// Internal reference is usually stored in metadata or is the reference itself
+	reference := event.Data.Reference
+	if val, ok := event.Data.Metadata["reference"].(string); ok {
+		reference = val
+	} else if val, ok := event.Data.Metadata["payment_reference"].(string); ok {
+		reference = val
+	}
+
+	return &VerifyResponse{
+		Status:            event.Data.Status,
+		Amount:            decimal.NewFromInt(event.Data.Amount).Div(decimal.NewFromInt(100)),
+		Currency:          event.Data.Currency,
+		Reference:         reference,
+		ExternalReference: event.Data.Reference,
+		CustomerEmail:     event.Data.Customer.Email,
+		Success:           event.Data.Status == "success" || event.Event == "charge.success",
+		Metadata:          event.Data.Metadata,
+	}, nil
 }

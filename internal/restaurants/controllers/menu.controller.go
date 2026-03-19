@@ -1,7 +1,9 @@
 package controllers
 
 import (
+	"bytes"
 	"encoding/json"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -222,21 +224,13 @@ func (mc *MenuController) GetMenuUploadURLHandler(writer http.ResponseWriter, re
 	})
 }
 
-// UploadMenuMediaHandler handles direct media upload (Multipart Form)
+// UploadMenuMediaHandler handles direct media upload (streaming Multipart Form)
 func (mc *MenuController) UploadMenuMediaHandler(writer http.ResponseWriter, request *http.Request) {
-	// Parse the multipart form (max 50MB)
-	err := request.ParseMultipartForm(50 << 20)
+	mr, err := request.MultipartReader()
 	if err != nil {
-		errors.ErrorResponse(writer, request, errors.ValidationError("File too large or invalid form"))
+		errors.ErrorResponse(writer, request, errors.ValidationError("Invalid multipart form"))
 		return
 	}
-
-	file, header, err := request.FormFile("file")
-	if err != nil {
-		errors.ErrorResponse(writer, request, errors.ValidationError("File is required"))
-		return
-	}
-	defer file.Close()
 
 	user := guards.ExtractAuthenticatedUser(request)
 	if user == nil {
@@ -244,19 +238,50 @@ func (mc *MenuController) UploadMenuMediaHandler(writer http.ResponseWriter, req
 		return
 	}
 
-	contentType := header.Header.Get("Content-Type")
-	filename := header.Filename
+	for {
+		part, err := mr.NextPart()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			errors.ErrorResponse(writer, request, errors.InternalError(err))
+			return
+		}
 
-	publicURL, appErr := mc.service.UploadMedia(request.Context(), user.UserID, filename, contentType, file, header.Size)
-	if appErr != nil {
-		errors.ErrorResponse(writer, request, appErr)
-		return
+		if part.FormName() == "file" {
+			defer part.Close()
+
+			contentType := part.Header.Get("Content-Type")
+			filename := part.FileName()
+
+			// We need to sniff the content type if it's not provided or to verify it
+			// Read first 512 bytes
+			sniffBuffer := make([]byte, 512)
+			n, _ := io.ReadFull(part, sniffBuffer)
+			
+			// Use MultiReader to put the sniffed bytes back
+			fullBody := io.MultiReader(bytes.NewReader(sniffBuffer[:n]), part)
+			
+			// If contentType is empty, detect it
+			if contentType == "" || contentType == "application/octet-stream" {
+				contentType = http.DetectContentType(sniffBuffer[:n])
+			}
+
+			publicURL, appErr := mc.service.UploadMedia(request.Context(), user.UserID, filename, contentType, fullBody, -1) // -1 since we don't know the full size easily with streaming
+			if appErr != nil {
+			    errors.ErrorResponse(writer, request, appErr)
+			    return
+			}
+
+			utils.WriteJSON(writer, http.StatusOK, dto.UploadMenuMediaResponse{
+				Title: "Upload successful",
+				Data:  dto.SingleURLResponse{URL: publicURL},
+			})
+			return
+		}
 	}
 
-	utils.WriteJSON(writer, http.StatusOK, dto.UploadMenuMediaResponse{
-		Title: "Upload successful",
-		Data:  dto.SingleURLResponse{URL: publicURL},
-	})
+	errors.ErrorResponse(writer, request, errors.ValidationError("File part 'file' is required"))
 }
 
 // CreateMenuHandler handles the creation of a menu item

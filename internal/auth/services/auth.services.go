@@ -168,6 +168,11 @@ func LoginUser(ctx context.Context, input dto.SigninInput, ip, ua string) (*mode
 		return nil, nil, errors.NotFoundError("invalid email or password")
 	}
 
+	// Fetch user with addresses for the response
+	if fullUser, err := repositories.UserRepo.FindByIDWithAddresses(ctx, user.ID); err == nil && fullUser != nil {
+		user = fullUser
+	}
+
 	// Generate token pair
 	tokens, appErr := GenerateTokenPair(ctx, user.ID, user.Role, ip, ua)
 	if appErr != nil {
@@ -209,6 +214,11 @@ func OAuthLogin(ctx context.Context, email, name, picture, ip, ua string) (*mode
 	} else {
 		if user.Status == types.StatusSuspended || user.Status == types.StatusDeleted {
 			return nil, nil, errors.ForbiddenError("account is " + string(user.Status))
+		}
+		
+		// If user exists, fetch with addresses so the frontend gets them
+		if fullUser, err := repositories.UserRepo.FindByIDWithAddresses(ctx, user.ID); err == nil && fullUser != nil {
+			user = fullUser
 		}
 	}
 

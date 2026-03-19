@@ -1,7 +1,6 @@
 package services
 
 import (
-	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -170,18 +169,13 @@ func (ms *MenuService) GetPartPresignedURL(ctx context.Context, key, uploadID st
 }
 
 // UploadMultipartPart proxies the chunk body from the client to S3 via the AWS SDK.
-// This avoids the browser → S3 CORS preflight issue entirely.
+// Optimized to stream the body directly to S3 using io.LimitReader.
 func (ms *MenuService) UploadMultipartPart(ctx context.Context, key, uploadID string, partNumber int32, body io.Reader, contentLength int64) (string, error) {
-	// 1. Read the chunk into a raw byte slice — MUST use bytes.NewReader, not strings.NewReader,
-	// because string(partBytes) corrupts binary data by re-encoding non-UTF-8 bytes.
-	partBytes, err := io.ReadAll(io.LimitReader(body, contentLength))
-	if err != nil {
-		return "", err
-	}
+	// Directly pass the limited reader to the s3 service for streaming.
+	// This avoids buffering the entire chunk in memory.
+	limitedReader := io.LimitReader(body, contentLength)
 
-	byteReader := bytes.NewReader(partBytes)
-
-	etag, err := ms.s3Service.UploadPart(ctx, key, uploadID, partNumber, byteReader, int64(len(partBytes)))
+	etag, err := ms.s3Service.UploadPart(ctx, key, uploadID, partNumber, limitedReader, contentLength)
 	if err != nil {
 		return "", err
 	}

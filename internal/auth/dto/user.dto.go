@@ -8,20 +8,19 @@ import (
 
 // UserData represents the response structure for user data
 type UserData struct {
-	ID          string           `json:"id"`
-	Name        string           `json:"name"`
-	Email       string           `json:"email"`
-	Role        types.UserRole   `json:"role"`
-	Address     string           `json:"address,omitempty"`
-	AvatarURL   string           `json:"avatar_url,omitempty"`
-	PhoneNumber string           `json:"phone_number,omitempty"`
-	Status      types.UserStatus `json:"status"`
-	Latitude    float64          `json:"latitude,omitempty"`
-	Longitude   float64          `json:"longitude,omitempty"`
-	CreatedAt   string           `json:"created_at"`
-	UpdatedAt   string           `json:"updated_at"`
+	ID          string                  `json:"id"`
+	Name        string                  `json:"name"`
+	Email       string                  `json:"email"`
+	Role        types.UserRole          `json:"role"`
+	AddressID   string                  `json:"address_id,omitempty"`
+	Address     string                  `json:"address,omitempty"`
+	Addresses   []*address.AddressModel `json:"addresses,omitempty"`
+	AvatarURL   string                  `json:"avatar_url,omitempty"`
+	PhoneNumber string                  `json:"phone_number,omitempty"`
+	Status      types.UserStatus        `json:"status"`
+	CreatedAt   string                  `json:"created_at"`
+	UpdatedAt   string                  `json:"updated_at"`
 }
-
 // UsersListResponse is the response for listing users
 type UsersListResponse struct {
 	Title string               `json:"title"`

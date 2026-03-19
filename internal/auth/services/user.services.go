@@ -14,44 +14,48 @@ import (
 	"github.com/alibaba0010/postgres-api/internal/common/types"
 	"github.com/alibaba0010/postgres-api/internal/database"
 	"github.com/alibaba0010/postgres-api/internal/utils"
+	"github.com/google/uuid"
 	"go.uber.org/zap"
 )
 
-// mapToCurrentUserResponse converts a user model to a user DTO
 func mapToCurrentUserResponse(user *models.User) dto.UserData {
+	var primaryAddr string
+	if user.AddressID != nil {
+		for _, addr := range user.Addresses {
+			if addr.ID == *user.AddressID {
+				primaryAddr = addr.FormattedAddress
+				break
+			}
+		}
+	}
+
 	return dto.UserData{
 		ID:          user.ID,
 		Name:        user.Name,
 		Email:       user.Email,
-		Address:     user.Address,
 		Role:        user.Role,
+		AddressID:   utils.GetStringFromUUID(user.AddressID),
+		Address:     primaryAddr,
+		Addresses:   user.Addresses,
 		Status:      user.Status,
 		AvatarURL:   user.AvatarURL,
 		PhoneNumber: user.PhoneNumber,
-		Latitude:    user.Latitude,
-		Longitude:   user.Longitude,
 		CreatedAt:   user.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 		UpdatedAt:   user.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
 	}
 }
 
 type UserService interface {
-	// getUserByID returns a user by id using repository
 	getUserByID(ctx context.Context, userID string) (*models.User, *errors.AppError)
-	// GetUserByID retrieves user information by ID for either current user or by admin
 	GetUserByID(ctx context.Context, userID string) (*dto.UserData, *errors.AppError)
-	// UpdateUser updates a user's address or phone number
 	UpdateUser(ctx context.Context, userID string, input dto.UpdateUserInput) (*dto.UpdateUserResponse, *errors.AppError)
-	// GetAllUsers returns a paginated, filtered and sorted list of users.
 	GetAllUsers(ctx context.Context, page, pageSize int, qStr, role, sortBy, order string) ([]dto.UserData, int64, *errors.AppError)
-	// UpdateUserRoleStatus updates a user's role and/or status (admin or management)
 	UpdateUserRoleStatus(ctx context.Context, userID string, input dto.UpdateUserRoleInput) (*dto.UpdateUserResponse, *errors.AppError)
-	// GetUserByEmail retrieves a user by their email address
 	GetUserByEmail(ctx context.Context, email string) (*models.User, *errors.AppError)
-	// ValidateUserRole validates and converts a role string to UserRole type
 	ValidateUserRole(roleStr string) (types.UserRole, *errors.AppError)
 }
 
+// getUserByID is the internal lightweight fetch (no addresses) — used by auth paths.
 func getUserByID(ctx context.Context, userID string) (*models.User, *errors.AppError) {
 	user, err := repositories.UserRepo.FindByID(ctx, userID)
 	if err != nil {
@@ -61,8 +65,18 @@ func getUserByID(ctx context.Context, userID string) (*models.User, *errors.AppE
 	return user, nil
 }
 
+// getUserByIDWithAddresses loads the user and their addresses — used for profile responses.
+func getUserByIDWithAddresses(ctx context.Context, userID string) (*models.User, *errors.AppError) {
+	user, err := repositories.UserRepo.FindByIDWithAddresses(ctx, userID)
+	if err != nil {
+		logger.Log.Debug("user not found by id", zap.String("user_id", userID))
+		return nil, errors.NotFoundError("user not found")
+	}
+	return user, nil
+}
+
 func GetUserByID(ctx context.Context, userID string) (*dto.UserData, *errors.AppError) {
-		user, appErr := getUserByID(ctx, userID)
+	user, appErr := getUserByIDWithAddresses(ctx, userID)
 	if appErr != nil {
 		logger.Log.Error("failed to fetch user from database", zap.String("user_id", userID))
 		return nil, appErr
@@ -78,69 +92,145 @@ func UpdateUser(ctx context.Context, userID string, input dto.UpdateUserInput) (
 		return nil, err
 	}
 
-	// Fetch current user first to validate existence
-	user, appErr := getUserByID(ctx, userID)
+	// Fetch current user with addresses for response
+	user, appErr := getUserByIDWithAddresses(ctx, userID)
 	if appErr != nil {
 		return nil, errors.NotFoundError("user not found")
 	}
 
-	// Update address using explicit transaction for data consistency
+	// Track whether we made any DB changes
+	didChange := false
+	var fieldsToUpdate []string
+
+	// Start a transaction for all changes
 	tx, err := database.DB.BeginTx(ctx, nil)
 	if err != nil {
 		logger.Log.Error("failed to begin transaction", zap.Error(err))
 		return nil, errors.TransactionError("starting", err)
 	}
 
-	// Defer transaction rollback (will be a no-op if commit succeeded)
+	// Defer rollback — no-op if already committed
 	defer func() {
-		if err := tx.Rollback(); err != nil && err.Error() != "tx: already committed or rolled back" {
+		if err := tx.Rollback(); err != nil && !strings.Contains(err.Error(), "already committed or rolled back") {
 			logger.Log.Error("failed to rollback transaction", zap.Error(err))
 		}
 	}()
 
-	// Update the fields if provided
-	var fieldsToUpdate []string
-
-	// Update address if provided using Format -> Geocode pipeline
+	// ── 1. Address update ────────────────────────────────────────────────────
 	if input.Address != nil {
 		addressSvc := address.NewService()
-		fmtAddr, lat, lng, appErr := addressSvc.ProcessAddress(ctx, input.Address)
-		if appErr != nil {
-			return nil, appErr
+		fmtAddr, lat, lng, err := addressSvc.ProcessAddress(ctx, input.Address)
+		if err != nil {
+			return nil, errors.ToAppError(err)
 		}
 
-		// Only update if the formatted address has changed
-		if fmtAddr != user.Address {
-			user.Address = fmtAddr
-			user.Latitude = lat
-			user.Longitude = lng
-			fieldsToUpdate = append(fieldsToUpdate, "address", "latitude", "longitude")
+		// Parse userID as UUID for the FK
+		parsedUID, err := uuid.Parse(userID)
+		if err != nil {
+			return nil, errors.ValidationError("invalid user ID")
 		}
+
+		rawAddr := input.Address.Address + ", " + input.Address.City + ", " + input.Address.Country
+		addrModel := &address.AddressModel{
+			UserID:           &parsedUID,
+			FormattedAddress: fmtAddr,
+			RawAddress:       rawAddr,
+			Latitude:         lat,
+			Longitude:        lng,
+			IsDefault:        true,
+			UpdatedAt:        time.Now(),
+		}
+
+		if input.Address.ID != "" {
+			// Update existing address
+			parsedAddrID, err := uuid.Parse(input.Address.ID)
+			if err != nil {
+				return nil, errors.ValidationError("invalid address ID")
+			}
+			// Unset existing defaults for this user before making this one the default
+			_, _ = tx.NewUpdate().
+				Model((*address.AddressModel)(nil)).
+				Set("is_default = false").
+				Where("user_id = ?", parsedUID).
+				Exec(ctx)
+
+			addrModel.ID = parsedAddrID
+			addrModel.CreatedAt = time.Time{} // Don't overwrite created_at
+
+			// Verify ownership before update
+			exists, err := tx.NewSelect().
+				Model((*address.AddressModel)(nil)).
+				Where("id = ? AND user_id = ?", parsedAddrID, parsedUID).
+				Exists(ctx)
+			if err != nil || !exists {
+				return nil, errors.ForbiddenError("Address not found or does not belong to user")
+			}
+
+			_, err = tx.NewUpdate().
+				Model(addrModel).
+				WherePK().
+				Exec(ctx)
+			if err != nil {
+				logger.Log.Error("failed to update user address", zap.Error(err))
+				return nil, errors.TransactionError("updating user address", err)
+			}
+		} else {
+			// Create new address
+			addrModel.ID = uuid.New()
+			addrModel.CreatedAt = time.Now()
+
+			// Unset existing defaults for this user before inserting new one
+			_, _ = tx.NewUpdate().
+				Model((*address.AddressModel)(nil)).
+				Set("is_default = false").
+				Where("user_id = ?", parsedUID).
+				Exec(ctx)
+
+			if _, err := tx.NewInsert().Model(addrModel).Exec(ctx); err != nil {
+				logger.Log.Error("failed to insert user address", zap.Error(err))
+				return nil, errors.TransactionError("adding user address", err)
+			}
+		}
+
+		// Update User's primary AddressID
+		user.AddressID = &addrModel.ID
+		if !utils.Contains(fieldsToUpdate, "address_id") {
+			fieldsToUpdate = append(fieldsToUpdate, "address_id")
+		}
+		
+		user.Addresses = append(user.Addresses, addrModel)
+		didChange = true
 	}
 
-	// Update phone number if provided and different
+	// ── 2. Phone number update ───────────────────────────────────────────────
 	if input.PhoneNumber != "" && input.PhoneNumber != user.PhoneNumber {
 		user.PhoneNumber = input.PhoneNumber
-		fieldsToUpdate = append(fieldsToUpdate, "phone_number")
+		if !utils.Contains(fieldsToUpdate, "phone_number") {
+			fieldsToUpdate = append(fieldsToUpdate, "phone_number")
+		}
+		didChange = true
 	}
 
-	// If no fields changed, return early
-	if len(fieldsToUpdate) == 0 {
+	// ── 3. Persist user row changes ──────────────────────────────────────────
+	if len(fieldsToUpdate) > 0 {
+		user.UpdatedAt = time.Now()
+		fieldsToUpdate = append(fieldsToUpdate, "updated_at")
+
+		if err := repositories.UserRepo.Update(ctx, tx, user, fieldsToUpdate...); err != nil {
+			logger.Log.Error("failed to update user info", zap.Error(err), zap.String("user_id", userID))
+			return nil, errors.TransactionError("updating user profile", err)
+		}
+	}
+
+	// Nothing changed at all — return current state without committing empty tx
+	if !didChange {
+		if err := tx.Rollback(); err != nil && !strings.Contains(err.Error(), "already committed or rolled back") {
+			logger.Log.Warn("rollback on no-change", zap.Error(err))
+		}
 		return &dto.UpdateUserResponse{
 			Title: "No changes",
 			Data:  mapToCurrentUserResponse(user),
 		}, nil
-	}
-
-	// Set updated_at and add to fields to update
-	user.UpdatedAt = time.Now()
-	fieldsToUpdate = append(fieldsToUpdate, "updated_at")
-
-	// Execute update within transaction
-	err = repositories.UserRepo.Update(ctx, tx, user, fieldsToUpdate...)
-	if err != nil {
-		logger.Log.Error("failed to update user info", zap.Error(err), zap.String("user_id", userID))
-		return nil, errors.TransactionError("updating user profile", err)
 	}
 
 	// Commit transaction
@@ -149,17 +239,13 @@ func UpdateUser(ctx context.Context, userID string, input dto.UpdateUserInput) (
 		return nil, errors.TransactionError("committing user profile update", err)
 	}
 
-	// Build and return response
-	response := &dto.UpdateUserResponse{
-		Title: "Success",
+	return &dto.UpdateUserResponse{
+		Title: "Updated successfully",
 		Data:  mapToCurrentUserResponse(user),
-	}
-
-	return response, nil
+	}, nil
 }
 
 // GetAllUsers returns a paginated, filtered and sorted list of users.
-// Supports search by name/email (`q`), role filter, and sorting by allowed columns.
 func GetAllUsers(ctx context.Context, page, pageSize int, qStr, role, sortBy, order string) ([]dto.UserData, int64, *errors.AppError) {
 	if page <= 0 {
 		page = 1
@@ -168,7 +254,6 @@ func GetAllUsers(ctx context.Context, page, pageSize int, qStr, role, sortBy, or
 		pageSize = 20
 	}
 
-	// Sorting validation
 	allowedSort := map[string]bool{"name": true, "email": true, "created_at": true, "role": true}
 	if !allowedSort[sortBy] {
 		sortBy = "created_at"
@@ -185,7 +270,6 @@ func GetAllUsers(ctx context.Context, page, pageSize int, qStr, role, sortBy, or
 		return nil, 0, errors.NotFoundError("no users found")
 	}
 
-	// Map to DTO
 	result := make([]dto.UserData, 0, len(users))
 	for _, u := range users {
 		result = append(result, mapToCurrentUserResponse(&u))
@@ -209,51 +293,42 @@ func GetUserByEmail(ctx context.Context, email string) (*models.User, *errors.Ap
 		logger.Log.Debug("user not found by email", zap.String("email", email))
 		return nil, errors.InternalError(err)
 	}
-
 	return user, nil
 }
 
 func UpdateUserRoleStatus(ctx context.Context, userID string, input dto.UpdateUserRoleInput) (*dto.UpdateUserResponse, *errors.AppError) {
-	// Validate input
 	if err := utils.ValidateInput(input); err != nil {
 		return nil, err
 	}
 
-	// Fetch user
 	user, appErr := getUserByID(ctx, userID)
 	if appErr != nil {
 		return nil, errors.NotFoundError("user not found")
 	}
 
-	// Start transaction
 	tx, err := database.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, errors.TransactionError("starting", err)
 	}
 
-	// Defer transaction rollback (will be a no-op if commit succeeded)
 	defer func() {
-		if err := tx.Rollback(); err != nil && err.Error() != "tx: already committed or rolled back" {
+		if err := tx.Rollback(); err != nil && !strings.Contains(err.Error(), "already committed or rolled back") {
 			logger.Log.Error("failed to rollback transaction", zap.Error(err))
 		}
 	}()
 
-	// Update role/status - track which fields actually changed
 	var fieldsToUpdate []string
 
-	// Update role if provided and different
 	if input.Role != "" && input.Role != user.Role {
 		user.Role = input.Role
 		fieldsToUpdate = append(fieldsToUpdate, "role")
 	}
 
-	// Update status if provided and different
 	if input.Status != "" && input.Status != user.Status {
 		user.Status = input.Status
 		fieldsToUpdate = append(fieldsToUpdate, "status")
 	}
 
-	// If no fields changed, return early
 	if len(fieldsToUpdate) == 0 {
 		return &dto.UpdateUserResponse{
 			Title: "No changes",
@@ -261,17 +336,13 @@ func UpdateUserRoleStatus(ctx context.Context, userID string, input dto.UpdateUs
 		}, nil
 	}
 
-	// Set updated_at and add to fields to update
 	user.UpdatedAt = time.Now()
 	fieldsToUpdate = append(fieldsToUpdate, "updated_at")
 
-	// Execute update within transaction
-	err = repositories.UserRepo.Update(ctx, tx, user, fieldsToUpdate...)
-	if err != nil {
+	if err := repositories.UserRepo.Update(ctx, tx, user, fieldsToUpdate...); err != nil {
 		return nil, errors.TransactionError("updating user role and status", err)
 	}
 
-	// Commit transaction
 	if err := tx.Commit(); err != nil {
 		return nil, errors.TransactionError("committing user role/status update", err)
 	}

@@ -34,19 +34,18 @@ type UpdateRestaurantInput struct {
 
 // RestaurantResponse represents the response structure for a restaurant
 type RestaurantResponse struct {
-	ID                string  `json:"id"`
-	Name              string  `json:"name"`
-	Description       string  `json:"description,omitempty"`
-	Address           string  `json:"address"`
-	AvatarURL         string  `json:"avatar_url,omitempty"`
-	Status            string  `json:"status"`
-	UserID            *string `json:"user_id,omitempty"`
+	ID                string                  `json:"id"`
+	Name              string                  `json:"name"`
+	Description       string                  `json:"description,omitempty"`
+	AddressID         string                  `json:"address_id,omitempty"`
+	Addresses         []*address.AddressModel `json:"addresses,omitempty"`
+	AvatarURL         string                  `json:"avatar_url,omitempty"`
+	Status            string                  `json:"status"`
+	UserID            *string                 `json:"user_id,omitempty"`
 	Capacity          int     `json:"capacity,omitempty"`
 	DeliveryAvailable bool    `json:"delivery_available"`
 	TakeawayAvailable bool    `json:"takeaway_available"`
 	Rating            float64 `json:"rating"`
-	Latitude          float64 `json:"latitude,omitempty"`
-	Longitude         float64 `json:"longitude,omitempty"`
 	CreatedAt         string  `json:"created_at"`
 	UpdatedAt         string  `json:"updated_at"`
 }

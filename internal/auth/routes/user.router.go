@@ -18,6 +18,10 @@ userRouter.HandleFunc("", controllers.CurrentUserHandler).Methods("GET")
 userRouter.HandleFunc("", controllers.UpdateUserHandler).Methods("PATCH")
 userRouter.HandleFunc("/logout", controllers.LogoutHandler).Methods("POST")
 
+// Address management routes (authenticated user only)
+userRouter.HandleFunc("/addresses/{addressId}", controllers.DeleteUserAddressHandler).Methods("DELETE")
+userRouter.HandleFunc("/addresses/{addressId}/default", controllers.SetDefaultUserAddressHandler).Methods("PATCH")
+
 // 2. Admin and management user listing (/users)
 adminListRouter := userRouter.PathPrefix("/users").Subrouter()
 adminListRouter.Use(guards.RequireRole(types.RoleAdmin.String(), types.RoleManagement.String()))

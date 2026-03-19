@@ -1,6 +1,7 @@
 package dto
 
 import (
+	"github.com/alibaba0010/postgres-api/internal/common/address"
 	"github.com/alibaba0010/postgres-api/internal/common/types"
 )
 
@@ -29,17 +30,17 @@ type SigninResponse struct {
 }
 
 type SigninData struct {
-	ID          string           `json:"id"`
-	Name        string           `json:"name"`
-	Email       string           `json:"email"`
-	Role        types.UserRole   `json:"role"`
-	Address     string           `json:"address,omitempty"`
-	AvatarURL   string           `json:"avatar_url,omitempty"`
-	PhoneNumber string           `json:"phone_number,omitempty"`
-	Status      types.UserStatus `json:"status"`
-	CreatedAt   string           `json:"created_at"`
-	UpdatedAt   string           `json:"updated_at"`
-	AccessToken string           `json:"access_token,omitempty"`
+	ID          string                  `json:"id"`
+	Name        string                  `json:"name"`
+	Email       string                  `json:"email"`
+	Role        types.UserRole          `json:"role"`
+	Addresses   []*address.AddressModel `json:"addresses,omitempty"`
+	AvatarURL   string                  `json:"avatar_url,omitempty"`
+	PhoneNumber string                  `json:"phone_number,omitempty"`
+	Status      types.UserStatus        `json:"status"`
+	CreatedAt   string                  `json:"created_at"`
+	UpdatedAt   string                  `json:"updated_at"`
+	AccessToken string                  `json:"access_token,omitempty"`
 }
 
 // user payload stored in redis during signup

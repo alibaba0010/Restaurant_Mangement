@@ -1,6 +1,7 @@
 package guards
 
 import (
+	"net"
 	"net/http"
 	"strings"
 	"go.uber.org/zap"
@@ -9,22 +10,28 @@ import (
 	"github.com/alibaba0010/postgres-api/internal/common/logger"
 	"github.com/alibaba0010/postgres-api/internal/config"
 	"github.com/alibaba0010/postgres-api/internal/utils"
-
 )
 
 // TurnstileMiddleware validates the Cloudflare Turnstile token from request headers
 func TurnstileMiddleware(next http.Handler) http.Handler {
+	cfg := config.LoadConfig()
+
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		cfg := config.LoadConfig()
-		// Skip verification if disabled or in development (if explicitly set)
-		// For now, we only skip if the secret key is missing.
+		// Skip verification if disabled
 		if cfg.TURNSTILE_SECRET_KEY == "" {
 			next.ServeHTTP(w, r)
 			return
 		}
 
+		// Bypass Turnstile if the user is authenticated (has Authorization header)
+		if authHeader := r.Header.Get("Authorization"); authHeader != "" && strings.HasPrefix(authHeader, "Bearer ") {
+			// (Optional) We could structurally decode/verify it here, but typically API handlers 
+			// themselves run independent Auth checks if they care. Here we just bypass the captcha.
+			next.ServeHTTP(w, r)
+			return
+		}
+
 		// Look for token in headers
-		// Common headers: X-Turnstile-Token or cf-turnstile-response
 		token := r.Header.Get("X-Turnstile-Token")
 		if token == "" {
 			token = r.Header.Get("cf-turnstile-response")
@@ -37,20 +44,23 @@ func TurnstileMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		logger.Log.Info("Turnstile token received", zap.String("path", r.URL.Path))
 		// Get remote IP safely
-		remoteIP := r.Header.Get("X-Forwarded-For")
-		if remoteIP != "" {
-			remoteIP = strings.Split(remoteIP, ",")[0]
+		var remoteIP string
+		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+			remoteIP = strings.Split(xff, ",")[0]
 		} else {
-			remoteIP = strings.Split(r.RemoteAddr, ":")[0]
+			host, _, err := net.SplitHostPort(r.RemoteAddr)
+			if err != nil {
+				remoteIP = r.RemoteAddr
+			} else {
+				remoteIP = host
+			}
 		}
 
 		// Verify token with Cloudflare
 		success, err := utils.VerifyTurnstileToken(token, remoteIP)
 		if err != nil {
-			// If it's a server error (networking), we might decide to let it pass or fail.
-			// Recommending "Fail-Closed" for security.
+			// Fail-Closed for security.
 			errors.ErrorResponse(w, r, errors.InternalError(err))
 			return
 		}

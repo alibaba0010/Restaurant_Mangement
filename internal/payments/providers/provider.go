@@ -20,6 +20,9 @@ type PaymentProvider interface {
 	// ValidateWebhook validates webhook signature/payload from provider
 	ValidateWebhook(ctx context.Context, body []byte, headers map[string]string) (bool, error)
 
+	// ParseWebhook parses the provider-specific webhook payload into a unified format
+	ParseWebhook(payload []byte) (*VerifyResponse, error)
+
 	// GetName returns the provider name
 	GetName() string
 }

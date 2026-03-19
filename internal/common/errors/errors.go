@@ -38,6 +38,17 @@ func New(title, message string, status int, err error) *AppError {
 		Err:     err,
 	}
 }
+
+// ToAppError safely converts an error to *AppError
+func ToAppError(err error) *AppError {
+	if err == nil {
+		return nil
+	}
+	if appErr, ok := err.(*AppError); ok {
+		return appErr
+	}
+	return InternalError(err)
+}
 func ErrorResponse(writer http.ResponseWriter, request *http.Request, appErr *AppError) {
 	// Ensure we have a valid AppError
 	if appErr == nil {

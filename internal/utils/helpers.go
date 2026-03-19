@@ -237,5 +237,23 @@ func ParseListParams(r *http.Request) ListParams {
 	}
 }
 
+// Contains checks if a string exists in a slice of strings.
+func Contains(slice []string, val string) bool {
+	for _, item := range slice {
+		if item == val {
+			return true
+		}
+	}
+	return false
+}
+
+// GetStringFromUUID returns the string representation of a UUID pointer, or empty string if nil.
+func GetStringFromUUID(u *uuid.UUID) string {
+	if u == nil {
+		return ""
+	}
+	return u.String()
+}
+
 
 
