@@ -3,6 +3,7 @@ package controllers
 import (
 	"encoding/json"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -158,7 +159,11 @@ func RefreshTokenHandler(writer http.ResponseWriter, request *http.Request) {
 		return
 	}
 
-	refreshToken := refreshCookie.Value
+	refreshToken, err := url.QueryUnescape(refreshCookie.Value)
+	if err != nil {
+		refreshToken = refreshCookie.Value
+	}
+	refreshToken = strings.TrimSpace(refreshToken)
 
 	if refreshToken == "" {
 		errors.ErrorResponse(writer, request, errors.UnauthorizedError("refresh token missing; please login again"))

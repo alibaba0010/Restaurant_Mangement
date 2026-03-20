@@ -16,21 +16,28 @@ import (
 
 const (
 	flutterwaveAPIBaseURL = "https://api.flutterwave.com/v3"
+	flutterwaveAuthURL    = "https://idp.flutterwave.com/realms/flutterwave/protocol/openid-connect/token"
 	flutterwaveTimeout    = 30 * time.Second
 )
 
 // FlutterwaveProvider implements the PaymentProvider interface for Flutterwave
 type FlutterwaveProvider struct {
-	secretKey     string
+	clientID      string
+	clientSecret  string
 	encryptionKey string
+	baseURL       string
+	authURL       string
 	client        *http.Client
 }
 
 // NewFlutterwaveProvider creates a new Flutterwave provider instance
-func NewFlutterwaveProvider(secretKey, encryptionKey string) *FlutterwaveProvider {
+func NewFlutterwaveProvider(clientID, clientSecret, encryptionKey, baseURL, authURL string) *FlutterwaveProvider {
 	return &FlutterwaveProvider{
-		secretKey:     secretKey,
+		clientID:      clientID,
+		clientSecret:  clientSecret,
 		encryptionKey: encryptionKey,
+		baseURL:       baseURL,
+		authURL:       authURL,
 		client: &http.Client{
 			Timeout: flutterwaveTimeout,
 		},
@@ -48,72 +55,14 @@ func (fw *FlutterwaveProvider) InitializePayment(ctx context.Context, req *Initi
 		return nil, fmt.Errorf("invalid payment request: amount, email, and reference are required")
 	}
 
-	body := map[string]interface{}{
-		"tx_ref":          req.Reference,
-		"amount":          req.Amount,
-		"currency":        req.Currency,
-		"payment_options": "card,banktransfer,ussd",
-		"customer": map[string]interface{}{
-			"email":       req.Email,
-			"phonenumber": req.Phone,
-			"name":        req.Name,
-		},
-		"customizations": map[string]interface{}{
-			"title":       "Payment",
-			"description": req.Description,
-		},
-		"redirect_url": req.CallbackURL,
-		"meta":         req.Metadata,
-	}
-
-	jsonBody, err := json.Marshal(body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request: %w", err)
-	}
-
-	request, err := http.NewRequestWithContext(ctx, "POST", flutterwaveAPIBaseURL+"/payments", bytes.NewBuffer(jsonBody))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	request.Header.Set("Authorization", "Bearer "+fw.secretKey)
-	request.Header.Set("Content-Type", "application/json")
-
-	resp, err := fw.client.Do(request)
-	if err != nil {
-		return nil, fmt.Errorf("flutterwave request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read response: %w", err)
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		logger.Log.Warn("Flutterwave API error", zap.Int("status", resp.StatusCode), zap.String("body", string(respBody)))
-		return nil, fmt.Errorf("flutterwave API error: status %d", resp.StatusCode)
-	}
-
-	var flutterwaveResp struct {
-		Status  string `json:"status"`
-		Message string `json:"message"`
-		Data    struct {
-			Link string `json:"link"`
-		} `json:"data"`
-	}
-
-	if err := json.Unmarshal(respBody, &flutterwaveResp); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
-	}
-
-	if flutterwaveResp.Status != "success" {
-		return nil, fmt.Errorf("flutterwave response indicates failure: %s", flutterwaveResp.Message)
-	}
-
+	// We rely on the frontend Flutterwave v3 checkout script natively handling the transaction
+	// Since our backend completely locks down `Amount` validation at verification,
+	// returning an empty AuthorizationURL pushes the UX directly to the slick inline modal
+	// natively without consuming the reference upfront (which causes duplicate transaction errors).
+	
 	return &InitializeResponse{
 		Status:           "pending",
-		AuthorizationURL: flutterwaveResp.Data.Link,
+		AuthorizationURL: "",
 		Reference:        req.Reference,
 	}, nil
 }
@@ -124,13 +73,15 @@ func (fw *FlutterwaveProvider) VerifyPayment(ctx context.Context, reference stri
 		return nil, fmt.Errorf("reference is required")
 	}
 
-	url := fmt.Sprintf("%s/transactions/%s/verify", flutterwaveAPIBaseURL, reference)
+	// We must use verify_by_reference because `reference` here is our `tx_ref`, NOT the Flutterwave integer transaction ID
+	url := fmt.Sprintf("%s/transactions/verify_by_reference?tx_ref=%s", fw.baseURL, reference)
 	request, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	request.Header.Set("Authorization", "Bearer "+fw.secretKey)
+	request.Header.Set("Authorization", "Bearer "+fw.clientSecret)
+	request.Header.Set("Content-Type", "application/json")
 
 	resp, err := fw.client.Do(request)
 	if err != nil {
@@ -197,13 +148,13 @@ func (fw *FlutterwaveProvider) RefundPayment(ctx context.Context, reference stri
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	url := fmt.Sprintf("%s/transactions/%s/refund", flutterwaveAPIBaseURL, reference)
+	url := fmt.Sprintf("%s/transactions/%s/refund", fw.baseURL, reference)
 	request, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonBody))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	request.Header.Set("Authorization", "Bearer "+fw.secretKey)
+	request.Header.Set("Authorization", "Bearer "+fw.clientSecret)
 	request.Header.Set("Content-Type", "application/json")
 
 	resp, err := fw.client.Do(request)

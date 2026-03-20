@@ -21,8 +21,8 @@ func InitProviders(cfg config.Config) map[types.PaymentProvider]PaymentProvider 
 	}
 
 	// Flutterwave
-	if cfg.FLUTTERWAVE_SECRET_KEY != "" {
-		providers[types.PaymentProviderFlutterwave] = NewFlutterwaveProvider(cfg.FLUTTERWAVE_SECRET_KEY, cfg.FLUTTERWAVE_HASH)
+	if cfg.FLUTTERWAVE_CLIENT_ID != "" && cfg.FLUTTERWAVE_CLIENT_SECRET != "" {
+		providers[types.PaymentProviderFlutterwave] = NewFlutterwaveProvider(cfg.FLUTTERWAVE_CLIENT_ID, cfg.FLUTTERWAVE_CLIENT_SECRET, cfg.FLUTTERWAVE_ENCRYPTION_KEY, cfg.FLUTTERWAVE_BASE_URL, cfg.FLUTTERWAVE_AUTH_URL)
 	}
 
 
