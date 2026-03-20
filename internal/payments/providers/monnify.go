@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/alibaba0010/postgres-api/internal/common/logger"
@@ -174,9 +175,17 @@ func (m *MonnifyProvider) VerifyPayment(ctx context.Context, reference string) (
 	}
 
 	if resp.StatusCode != http.StatusOK {
+		if resp.StatusCode == http.StatusNotFound {
+			return &VerifyResponse{
+				Status:    "NOT_FOUND",
+				Reference: reference,
+				Success:   false,
+			}, nil
+		}
 		logger.Log.Warn("Monnify verification error", zap.Int("status", resp.StatusCode), zap.String("body", string(respBody)))
 		return nil, fmt.Errorf("monnify verification failed: status %d", resp.StatusCode)
 	}
+
 
 	var monnifyResp monnifyVerifyResponse
 	if err := json.Unmarshal(respBody, &monnifyResp); err != nil {
@@ -188,15 +197,21 @@ func (m *MonnifyProvider) VerifyPayment(ctx context.Context, reference string) (
 		return nil, fmt.Errorf("monnify verification returned failure status: %s", monnifyResp.ResponseMessage)
 	}
 
+	status := monnifyResp.ResponseBody.PaymentStatus
+	success := strings.EqualFold(status, "PAID") || 
+			   strings.EqualFold(status, "SUCCESS") || 
+			   strings.EqualFold(status, "OVERPAID")
+
 	return &VerifyResponse{
-		Status:            monnifyResp.ResponseBody.PaymentStatus,
+		Status:            status,
 		Amount:            monnifyResp.ResponseBody.AmountPaid,
 		Currency:          monnifyResp.ResponseBody.Currency,
 		Reference:         reference,
 		ExternalReference: monnifyResp.ResponseBody.TransactionRef,
 		CustomerEmail:     monnifyResp.ResponseBody.CustomerEmail,
-		Success:           monnifyResp.ResponseBody.PaymentStatus == "PAID" || monnifyResp.ResponseBody.PaymentStatus == "SUCCESS",
+		Success:           success,
 	}, nil
+
 }
 
 // RefundPayment processes a refund with Monnify
@@ -303,16 +318,23 @@ func (m *MonnifyProvider) ParseWebhook(payload []byte) (*VerifyResponse, error) 
 		email = event.EventData.Customer.Email
 	}
 
+	status := event.EventData.PaymentStatus
+	success := strings.EqualFold(status, "PAID") || 
+			   strings.EqualFold(status, "SUCCESS") || 
+			   strings.EqualFold(status, "OVERPAID") || 
+			   strings.EqualFold(event.EventType, "SUCCESSFUL_TRANSACTION")
+
 	return &VerifyResponse{
-		Status:            event.EventData.PaymentStatus,
+		Status:            status,
 		Amount:            amount,
 		Currency:          event.EventData.CurrencyCode,
 		Reference:         event.EventData.PaymentReference,
 		ExternalReference: event.EventData.TransactionReference,
 		CustomerEmail:     email,
-		Success:           event.EventData.PaymentStatus == "PAID" || event.EventData.PaymentStatus == "SUCCESS" || event.EventType == "SUCCESSFUL_TRANSACTION",
+		Success:           success,
 		Metadata:          metadata,
 	}, nil
+
 }
 
 func (m *MonnifyProvider) getBearerToken(ctx context.Context) (string, error) {

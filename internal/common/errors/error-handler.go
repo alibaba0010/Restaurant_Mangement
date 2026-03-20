@@ -14,12 +14,7 @@ import (
 )
 
 // HandleError converts arbitrary errors into AppError and writes the JSON response.
-// Usage in handlers:
-//
-//	if err != nil {
-//	    errors.HandleError(w, r, err)
-//	    return
-//	}
+
 func HandleError(w http.ResponseWriter, r *http.Request, err error) {
 	// Map to AppError (may return nil). ErrorResponse handles nil by producing a 500.
 	ErrorResponse(w, r, mapToAppError(err))

@@ -14,6 +14,11 @@ func ValidationError(message string) *AppError {
 	return New("Validation Error", message, http.StatusBadRequest, nil)
 }
 
+func OutOfStockError(message string) *AppError {
+	return New("Out of Stock", message, http.StatusBadRequest, nil)
+}
+
+
 // ValidationErrors returns an AppError that contains multiple validation messages.
 func ValidationErrors(messages []string) *AppError {
 	return &AppError{

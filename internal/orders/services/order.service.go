@@ -290,7 +290,7 @@ func (s *OrderService) CreateOrder(ctx context.Context, userID string, input dto
 			// Business Rule: Ensure sufficient stock exists.
 			if menuItem.StockQuantity < item.Quantity {
 				if menuItem.StockQuantity == 0 {
-					return fmt.Errorf("outofstock: %s is currently out of stock", menuItem.Name)
+					return fmt.Errorf("outofstock: %s is out of stock", menuItem.Name)
 				}
 				return fmt.Errorf("outofstock: %s has insufficient stock (only %d left)", menuItem.Name, menuItem.StockQuantity)
 			}
@@ -320,7 +320,7 @@ func (s *OrderService) CreateOrder(ctx context.Context, userID string, input dto
 		// Surface out-of-stock errors as a client-facing 400 ValidationError
 		if strings.HasPrefix(err.Error(), "outofstock:") {
 			msg := strings.TrimPrefix(err.Error(), "outofstock: ")
-			return nil, errors.ValidationError(msg)
+			return nil, errors.OutOfStockError(msg)
 		}
 		return nil, errors.TransactionError("creating order", err)
 	}

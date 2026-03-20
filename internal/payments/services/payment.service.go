@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/alibaba0010/postgres-api/internal/common/events"
@@ -163,9 +164,11 @@ func (s *paymentService) verifyPaymentInternal(ctx context.Context, payment *mod
 
 	previousStatus := payment.Status
 	if verifyResp.Success {
-		// Verify amount matches exactly to prevent partial payment or client-side manipulation limits
-		if verifyResp.Amount.GreaterThan(decimal.Zero) && !verifyResp.Amount.Equal(payment.Amount) {
-			logger.Log.Warn("Payment amount mismatch detected", 
+		// Business Rule: Confirm amount is at least what we expected.
+		// We allow 'Success' even if they paid MORE (common with some providers adding surcharges or if user rounds up),
+		// but we FAIL if they paid LESS than the order total.
+		if verifyResp.Amount.GreaterThan(decimal.Zero) && verifyResp.Amount.LessThan(payment.Amount) {
+			logger.Log.Warn("Insufficient payment amount detected", 
 				zap.String("reference", payment.Reference), 
 				zap.String("expected", payment.Amount.String()), 
 				zap.String("actual", verifyResp.Amount.String()))
@@ -175,8 +178,11 @@ func (s *paymentService) verifyPaymentInternal(ctx context.Context, payment *mod
 			now := time.Now()
 			payment.CompletedAt = &now
 		}
-	} else if verifyResp.Status == "failed" {
-		payment.Status = types.PaymentStatusFailed
+	} else {
+		statusLower := strings.ToLower(verifyResp.Status)
+		if statusLower == "failed" || statusLower == "abandoned" || statusLower == "cancelled" || statusLower == "expired" || statusLower == "reversed" {
+			payment.Status = types.PaymentStatusFailed
+		}
 	}
 
 	if payment.Status != previousStatus {
@@ -205,7 +211,15 @@ func (s *paymentService) verifyPaymentInternal(ctx context.Context, payment *mod
 					return fmt.Errorf("failed to update order: %w", err)
 				}
 
-				// 3. Get Order and Create Settlement
+				// 3. Prevent Duplicate Settlements: Check if one exists already
+				settleRepoTx := repositories.NewSettlementRepository(tx)
+				existingSettle, _ := settleRepoTx.FindByOrderID(ctx, payment.OrderID.String())
+				if existingSettle != nil {
+					logger.Log.Info("Settlement already exists for order, skipping creation", zap.String("order_id", payment.OrderID.String()))
+					return nil
+				}
+
+				// 4. Get Order and Create Settlement
 				order, err := s.orderRepo.FindByID(ctx, payment.OrderID.String())
 				if err != nil {
 					return fmt.Errorf("order not found: %w", err)
@@ -230,7 +244,6 @@ func (s *paymentService) verifyPaymentInternal(ctx context.Context, payment *mod
 					Status:          models.SettlementStatusPending,
 				}
 				
-				settleRepoTx := repositories.NewSettlementRepository(tx)
 				if err := settleRepoTx.Create(ctx, settlement); err != nil {
 					return fmt.Errorf("failed to create settlement: %w", err)
 				}

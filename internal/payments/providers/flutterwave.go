@@ -95,9 +95,17 @@ func (fw *FlutterwaveProvider) VerifyPayment(ctx context.Context, reference stri
 	}
 
 	if resp.StatusCode != http.StatusOK {
+		if resp.StatusCode == http.StatusNotFound {
+			return &VerifyResponse{
+				Status:    "NOT_FOUND",
+				Reference: reference,
+				Success:   false,
+			}, nil
+		}
 		logger.Log.Warn("Flutterwave verification error", zap.Int("status", resp.StatusCode), zap.String("body", string(respBody)))
 		return nil, fmt.Errorf("flutterwave verification failed: status %d", resp.StatusCode)
 	}
+
 
 	var flutterwaveResp struct {
 		Status string `json:"status"`

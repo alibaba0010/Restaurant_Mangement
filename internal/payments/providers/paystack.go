@@ -212,9 +212,17 @@ func (p *PaystackProvider) VerifyPayment(ctx context.Context, reference string) 
 	}
 
 	if resp.StatusCode != http.StatusOK {
+		if resp.StatusCode == http.StatusNotFound {
+			return &VerifyResponse{
+				Status:    "NOT_FOUND",
+				Reference: reference,
+				Success:   false,
+			}, nil
+		}
 		logger.Log.Warn("Paystack verification error", zap.Int("status", resp.StatusCode), zap.String("body", string(respBody)))
 		return nil, fmt.Errorf("paystack verification failed: status %d", resp.StatusCode)
 	}
+
 
 	var paystackResp paystackVerifyResponse
 	if err := json.Unmarshal(respBody, &paystackResp); err != nil {
