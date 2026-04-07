@@ -1,4 +1,4 @@
-# GourmetHub — Backend API
+there# GourmetHub — Backend API
 
 A production-grade REST API powering the GourmetHub restaurant management platform. Built with Go 1.24, PostgreSQL, Redis, and Redpanda event streaming.
 
@@ -29,26 +29,28 @@ A production-grade REST API powering the GourmetHub restaurant management platfo
 ## 🏗 Architecture Overview
 
 ```
-┌─────────────┐     ┌──────────────────────────────────────────────────┐
-│   Client    │────▶│  Go HTTP Server (gorilla/mux)                   │
-│  (Next.js)  │◀────│                                                  │
-└─────────────┘     │  ┌──────────┐  ┌───────────┐  ┌──────────────┐  │
-                    │  │   Auth   │  │Restaurant │  │   Orders     │  │
-                    │  │  Module  │  │ & Menus   │  │   Module     │  │
-                    │  └────┬─────┘  └─────┬─────┘  └──────┬───────┘  │
-                    │       │              │               │          │
-                    │  ┌────▼──────────────▼───────────────▼───────┐  │
-                    │  │         PostgreSQL (Bun ORM)              │  │
-                    │  └──────────────────────────────────────────┘  │
-                    │  ┌────────────┐  ┌───────────────────────────┐  │
-                    │  │   Redis    │  │  Redpanda (Event Bus)     │  │
-                    │  │  (Cache)   │  │  Kafka-compatible         │  │
-                    │  └────────────┘  └───────────────────────────┘  │
-                    │  ┌────────────┐  ┌───────────────────────────┐  │
-                    │  │  AWS S3    │  │ Payment Providers         │  │
-                    │  │ CloudFront │  │ Paystack/Monnify/Flutter  │  │
-                    │  └────────────┘  └───────────────────────────┘  │
-                    └──────────────────────────────────────────────────┘
+┌─────────────┐     ┌─────────────────────────────────────────────────────────┐
+│   Client    │────▶│           Go HTTP Server (gorilla/mux)                  │
+│  (Next.js)  │◀────│                                                         │
+└─────────────┘     │  ┌──────────┐  ┌───────────┐  ┌──────────────┐          │
+                    │  │   Auth   │  │Restaurant │  │    Orders    │          │
+                    │  │  Module  │  │ & Menus   │  │    Module    │          │
+                    │  └────┬─────┘  └─────┬─────┘  └──────┬───────┘          │
+                    │       │              │               │                  │
+                    │  ┌────▼──────────────▼───────────────▼───────┐          │
+                    │  │         PostgreSQL (Bun ORM)              │          │
+                    │  └───────────────────┬───────────────────────┘          │
+                    │                      │                                  │
+                    │  ┌────────────┐  ┌───▼───────────────────────┐          │
+                    │  │   Redis    │  │  Redpanda (Event Bus)     │          │
+                    │  │  (Cache)   │  │  Kafka-compatible         │          │
+                    │  └────────────┘  └───────────┬───────────────┘          │
+                    │                              │                          │
+                    │  ┌────────────┐  ┌───────────▼───────────────┐          │
+                    │  │  AWS S3    │  │  Payments & Notifications │          │
+                    │  │ CloudFront │  │  (Async Workflows)        │          │
+                    │  └────────────┘  └───────────────────────────┘          │
+                    └─────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -279,6 +281,7 @@ server/
 └── internal/
     ├── config/                      # Environment configuration loader
     ├── database/                    # PostgreSQL and Redis connection managers
+    ├── routes/                      # Global router & health routes
     │
     ├── auth/
     │   ├── controllers/             # HTTP handlers (signup, signin, OAuth, etc.)
@@ -314,6 +317,9 @@ server/
     │   ├── repositories/            # Payment & settlement persistence
     │   ├── routes/                  # Payment route registration
     │   └── services/                # Payment orchestration & settlement
+    │
+    ├── notifications/
+    │   └── module.go                # Central subscriber for system-wide alerts
     │
     ├── common/
     │   ├── address/                 # Address validation & geocoding service
@@ -454,6 +460,7 @@ The system uses Redpanda (Kafka-compatible) for asynchronous communication betwe
 | ---------------------- | --------------- | -------------- |
 | `order.created`        | Order Service   | `{ order_id }` |
 | `order.status_updated` | Order Service   | `{ order_id }` |
+| `user.registered`      | Auth Service    | `{ user_id }`  |
 | `menu.created`         | Menu Service    | `{ menu_id }`  |
 | `menu.updated`         | Menu Service    | `{ menu_id }`  |
 | `menu.deleted`         | Menu Service    | `{ menu_id }`  |
@@ -463,10 +470,12 @@ The system uses Redpanda (Kafka-compatible) for asynchronous communication betwe
 
 ### Subscribed Events
 
-| Consumer         | Subscribes To        | Action                           |
-| ---------------- | -------------------- | -------------------------------- |
-| Order Subscriber | `payment_successful` | Sets order status to `confirmed` |
-| Order Subscriber | `payment_failed`     | Sets order status to `cancelled` |
+| Consumer                | Subscribes To                           | Action                                |
+| ----------------------- | --------------------------------------- | ------------------------------------- |
+| Order Subscriber        | `payment_successful`                    | Sets order status to `confirmed`      |
+| Order Subscriber        | `payment_failed`                        | Sets order status to `cancelled`      |
+| Notification Subscriber | `order.created`, `order.status_updated` | Triggers email/push notifications     |
+| Notification Subscriber | `user.registered`                       | Welcomes user & triggers verification |
 
 ### Infrastructure
 
